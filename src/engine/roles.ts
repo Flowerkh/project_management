@@ -27,10 +27,20 @@ export const WORDS: Record<string, string> = {
   PRICE: '가격', PRC: '가격', AMT: '금액', AMOUNT: '금액', QTY: '수량', CNT: '건수', COUNT: '건수', DT: '일자', DATE: '일자', DTTM: '일시', TM: '시각',
   OPTION: '옵션', OPT: '옵션', IMG: '이미지', IMAGE: '이미지', CONTENT: '콘텐츠', CNTNTS: '콘텐츠', PAGE: '페이지', SITE: '사이트', SHOP: '상점', MALL: '쇼핑몰', STORE: '매장', BRAND: '브랜드',
   ACCOUNT: '계정', ACCT: '계좌', BANK: '은행', CARD: '카드', INVOICE: '청구서', BILL: '청구', TAX: '세금', CONTRACT: '계약', CNTRCT: '계약', ESTIMATE: '견적', QUOTE: '견적',
-  SAMPLE: '시료', SMPL: '시료', SPECIMEN: '검체', ANALYSIS: '분석', ANLS: '분석', ANLY: '분석', EXPERIMENT: '실험', EXPR: '실험', SEQUENCING: '시퀀싱', REPORT: '보고서', RPT: '보고서', PROJECT: '과제', PRJ: '과제', PJT: '과제',
+  SAMPLE: '샘플', SMPL: '샘플', SPECIMEN: '검체', ANALYSIS: '분석', ANLS: '분석', ANLY: '분석', EXPERIMENT: '실험', EXPR: '실험', SEQUENCING: '시퀀싱', REPORT: '보고서', RPT: '보고서', PROJECT: '과제', PRJ: '과제', PJT: '과제',
   STUDENT: '학생', COURSE: '과정', LECTURE: '강의', SCORE: '성적', PATIENT: '환자', DOCTOR: '의사', VISIT: '방문', RESERVATION: '예약', RSRV: '예약', BOOKING: '예약',
   INPUT: '입력', OUTPUT: '출력', IN: '입고', OUT: '출고', RCV: '입고', RECEIPT: '입고', RELEASE: '출고', DIST: '배분', PURCHASE: '구매', PURCHS: '구매', PO: '발주',
 };
+
+/** 화면 이름에 자주 붙는 말 */
+export const SCREEN_WORDS: Record<string, string> = {
+  LIST: '목록', LST: '목록', VIEW: '보기', DETAIL: '상세', DTL: '상세', FORM: '등록', REGIST: '등록', REG: '등록', INSERT: '등록', WRITE: '작성', EDIT: '수정', MODIFY: '수정', UPDT: '수정', UPDATE: '수정',
+  DELETE: '삭제', MAIN: '메인', INDEX: '메인', POPUP: '팝업', POP: '팝업', SEARCH: '검색', EXCEL: '엑셀', PRINT: '인쇄', LOGIN: '로그인', CREATE: '등록', SHOW: '보기', MANAGE: '관리', MNG: '관리', MGMT: '관리',
+  NEW: '신규', CONFIRM: '확인', ADD: '추가', FIND: '찾기', SELECT: '조회', GET: '조회', INQIRE: '조회', INQUIRE: '조회', RETRIEVE: '조회',
+};
+
+/** 앞에 오면 한국어 어순에 맞게 뒤로 보낼 동작 말 (viewCategory → 카테고리 보기) */
+const LEADING_ACTION = new Set(['LIST', 'LST', 'VIEW', 'SHOW', 'DETAIL', 'DTL', 'SEARCH', 'FIND', 'EDIT', 'MODIFY', 'UPDATE', 'UPDT', 'DELETE', 'INSERT', 'REGIST', 'REG', 'CREATE', 'WRITE', 'ADD', 'MANAGE', 'MNG', 'CONFIRM', 'SELECT', 'GET', 'INQIRE', 'INQUIRE', 'RETRIEVE']);
 
 /** 테이블 접두어 (뜻 없음) */
 const TABLE_PREFIX = /^(TB|TBL|T|TN|TC|TH|TM|TT|TS|M|MT|BT)_/i;
@@ -57,7 +67,17 @@ function splitGlued(s: string): string[] {
       i = j;
     }
   }
+  // 사전에 없는 조각이 섞이면(ABOUT → AB+OUT) 쪼개지 않는다
+  if (out.some((p) => WORDS[p] === undefined && !/^\d+$/.test(p))) return [u];
   return out;
+}
+
+/** 영어 복수형 → 단수 (orders → ORDER, categories → CATEGORY) */
+function singularWord(u: string): string {
+  if (/IES$/.test(u)) return `${u.slice(0, -3)}Y`;
+  if (/(SES|XES|ZES|CHES|SHES)$/.test(u)) return u.slice(0, -2);
+  if (/S$/.test(u) && !/SS$/.test(u)) return u.slice(0, -1);
+  return u;
 }
 
 /** 식별자 → 단어들 (snake, camel, 붙은 대문자) */
@@ -70,8 +90,15 @@ export function tokens(id: string): string[] {
   const out: string[] = [];
   for (const p of parts) {
     const u = p.toUpperCase();
-    if (WORDS[u] !== undefined || u.length <= 4) out.push(u);
-    else out.push(...splitGlued(u));
+    if (WORDS[u] !== undefined || SCREEN_WORDS[u] !== undefined || u.length <= 4) out.push(u);
+    else if (WORDS[singularWord(u)] !== undefined) out.push(singularWord(u));
+    else {
+      // 사전 단어로 깔끔하게 나뉠 때만 쪼갬 (INDEX → IN+DEX 같은 오분할 방지)
+      const parts = splitGlued(u);
+      const unknown = parts.filter((x) => WORDS[x] === undefined && SCREEN_WORDS[x] === undefined);
+      if (unknown.some((x) => x.length < 3) || unknown.join('').length > u.length / 2) out.push(u);
+      else out.push(...parts);
+    }
   }
   return out;
 }
@@ -88,7 +115,7 @@ export function translate(id: string): { text: string; known: number; total: num
   let known = 0;
   const words: string[] = [];
   for (const t of toks) {
-    const w = WORDS[t];
+    const w = WORDS[t] ?? WORDS[singularWord(t)];
     if (w !== undefined) {
       known++;
       if (w && words[words.length - 1] !== w) words.push(w);
@@ -154,14 +181,12 @@ export function batchRole(title: string | undefined, tables: { short: string; cr
 export function nameFromPath(path: string): string {
   const base = path.replace(/\.[a-z.]+$/i, '').split('/').filter(Boolean);
   const last = base[base.length - 1] ?? path;
-  const extra: Record<string, string> = {
-    LIST: '목록', LST: '목록', VIEW: '보기', DETAIL: '상세', DTL: '상세', FORM: '등록', REGIST: '등록', REG: '등록', INSERT: '등록', WRITE: '작성', EDIT: '수정', MODIFY: '수정', UPDT: '수정', UPDATE: '수정',
-    DELETE: '삭제', MAIN: '메인', INDEX: '메인', POPUP: '팝업', POP: '팝업', SEARCH: '검색', EXCEL: '엑셀', PRINT: '인쇄', LOGIN: '로그인', CREATE: '등록', SHOW: '보기', MANAGE: '관리', MNG: '관리', MGMT: '관리',
-  };
-  const toks = tokens(last);
+  const extra = SCREEN_WORDS;
+  let toks = tokens(last);
+  if (toks.length >= 2 && LEADING_ACTION.has(toks[0]) && toks.slice(1).some((t) => SCREEN_WORDS[t] === undefined)) toks = [...toks.slice(1), toks[0]];
   const words = toks.map((t) => extra[t] ?? WORDS[t] ?? t.toLowerCase());
   const dedup = words.filter((w, i) => w && w !== words[i - 1]);
-  if (dedup.every((w) => /^[a-z0-9]+$/.test(w)) && base.length > 1) {
+  if ((dedup.every((w) => /^[a-z0-9]+$/.test(w)) || toks.every((t) => SCREEN_WORDS[t] !== undefined)) && base.length > 1) {
     const parent = tokens(base[base.length - 2]).map((t) => WORDS[t] ?? t.toLowerCase());
     return [...parent, ...dedup].join(' ');
   }

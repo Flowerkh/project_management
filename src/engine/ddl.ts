@@ -100,7 +100,7 @@ const CONSTRAINT_START = /^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|KEY|INDEX|FOREIGN\s+
 
 export function parseCreateTable(stmt: string): Omit<DdlTable, 'evidence'> | null {
   const s = stripComments(stmt);
-  const m = /^\s*CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w$#."`[\]]+)\s*\(/i.exec(s);
+  const m = /^\s*CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|MEMORY\s+|CACHED\s+|TEMP\s+|TEXT\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w$#."`[\]]+)\s*\(/i.exec(s);
   if (!m) return null;
   const name = lastName(m[1]);
   // 본문 괄호 짝 찾기
@@ -154,7 +154,7 @@ export function parseCreateTable(stmt: string): Omit<DdlTable, 'evidence'> | nul
 
 /** 파일 하나의 DDL 해석 (CREATE TABLE + COMMENT ON + ALTER … PRIMARY KEY) */
 export function parseDdlFile(fileId: string, text: string): DdlTable[] {
-  if (!/\bCREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+)?TABLE\b/i.test(text) && !/\bCOMMENT\s+ON\b/i.test(text)) return [];
+  if (!/\bCREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|MEMORY\s+|CACHED\s+|TEMP\s+|TEXT\s+)?TABLE\b/i.test(text) && !/\bCOMMENT\s+ON\b/i.test(text)) return [];
   const lineOf = makeLineIndex(text);
   const tables = new Map<string, DdlTable>();
   const comments: { table: string; column?: string; text: string }[] = [];

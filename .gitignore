@@ -2,3 +2,5 @@ node_modules/
 dist/
 release/
 fixtures/ext/
+desktop/node_modules/
+desktop/app/

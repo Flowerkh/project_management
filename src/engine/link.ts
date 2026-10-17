@@ -274,7 +274,13 @@ export function link(facts: Facts): Linked {
     const cands: string[] = [];
     for (const vr of facts.viewResolvers) {
       if (vr.definitions?.[clean]) cands.push(vr.definitions[clean].replace(/^\/+/, ''));
-      cands.push(`${vr.prefix}${clean}${vr.suffix}`.replace(/^\/+/, ''));
+      for (const [pat, target] of Object.entries(vr.definitions ?? {})) {
+        if (!pat.includes('*')) continue;
+        const re = new RegExp(`^${pat.replace(/[.+?^$()|[\]\\]/g, '\\$&').replace(/\*/g, '(.*?)')}$`);
+        const mm = re.exec(clean);
+        if (mm) cands.push(target.replace(/\{(\d+)\}/g, (_, n) => mm[Number(n)] ?? '').replace(/^\/+/, ''));
+      }
+      if (vr.prefix || vr.suffix) cands.push(`${vr.prefix}${clean}${vr.suffix}`.replace(/^\/+/, ''));
     }
     for (const c of cands) {
       const hit = viewFiles.filter((x) => x.path === c || x.path.endsWith(`/${c}`));
@@ -399,7 +405,10 @@ export function link(facts: Facts): Linked {
 
     const calls: ScreenResult['calls'] = [];
     const seenCall = new Set<string>();
-    for (const u of refs) {
+    const baseDir = (urls[0] ?? '').replace(/[^/]*$/, '');
+    for (const u0 of refs) {
+      // 상대 URL(detail.do, ./x.php)은 화면 URL의 폴더 기준
+      const u = !u0.url.startsWith('/') && baseDir ? { ...u0, url: `${baseDir}${u0.url.replace(/^\.\//, '')}` } : u0;
       const n = normUrl(u.url);
       if (seenCall.has(n)) continue;
       seenCall.add(n);
@@ -434,7 +443,7 @@ export function link(facts: Facts): Linked {
     }
     for (const [fid, layer] of total.files) if (!files.has(fid)) files.set(fid, { layer });
     if (total.tables.size && score >= 1) score = 2;
-    const estimated = [...total.tables.values()].some((t) => t.estimated);
+    const estimated = [...total.tables.values()].some((t) => t.estimated) || [...total.sql].some((id) => sqlById.get(id)?.dynamic);
     const name = v.title?.trim() || nameFromPath(urls[0] ?? f.path);
     const popup = /pop(up)?/i.test(f.name) || /pop(up)?/i.test(urls[0] ?? '');
     const scr: ScreenResult = {
@@ -466,6 +475,10 @@ export function link(facts: Facts): Linked {
   const seenRoute = new Set<string>();
   for (const r of routes) {
     if (referencedRoutes.has(r)) continue;
+    // 리다이렉트만 하는 이동용 메서드(로그아웃 등)는 API 목록에서 뺌
+    if (!r.route.api && !r.m.views.length && (r.m.redirects?.length ?? 0) > 0) continue;
+    // 같은 메서드·같은 경로의 다른 HTTP 메서드(PUT/PATCH 등)가 이미 쓰였으면 건너뜀
+    if (routes.some((o) => o !== r && o.m === r.m && o.norm === r.norm && referencedRoutes.has(o))) continue;
     const key = `${r.route.method} ${r.norm}`;
     if (seenRoute.has(key)) continue;
     seenRoute.add(key);
@@ -503,6 +516,8 @@ export function link(facts: Facts): Linked {
       const seg = normUrl(url).split('/').filter(Boolean);
       if (seg.length > 1) return `/${seg[0]}`;
       if (seg.length === 1 && !/\./.test(seg[0])) return `/${seg[0]}`;
+      // 루트 URL('/', '/index.php', '/help.html')은 '/' 그룹
+      if (seg.length <= 1) return '/';
     }
     const d = dirName(path).split('/');
     return d[d.length - 1] || '/';
@@ -582,7 +597,7 @@ export function link(facts: Facts): Linked {
         }
       }
     }
-    for (const t of [...r.tables.values()].slice(0, 6)) flow.push({ layer: 'TABLE', symbol: t.name });
+    for (const t of [...r.tables.values()].slice(0, 6)) if (!flow.some((x) => x.layer === 'TABLE' && x.symbol === t.name)) flow.push({ layer: 'TABLE', symbol: t.name });
     const group = b.kind === 'spring-scheduled' ? 'Spring 스케줄러' : b.kind === 'quartz' ? 'Quartz' : b.kind === 'spring-batch' ? 'Spring Batch' : (entry ? baseName(dirName(entry.path)) || '/' : '/');
     batches.push({
       id: `B${String(++bseq).padStart(3, '0')}`,
@@ -685,7 +700,7 @@ export function link(facts: Facts): Linked {
     const screensUsing = used.filter((x) => x.kind === 'screen').length;
     const common = /(^|_)(CODE|CD|CMMN|CMN|COMMON|LOG|LOGS|FILE|FILES|ATCH|ATTACH|ATTACHMENT|SEQ|SEQUENCE|PROPERTY|PROP|CONFIG)(_|$)/i.test(name)
       || /^COMT(C|N)(CMMN|CODE|.*CODE$|FILE|.*LOG$)/i.test(name)
-      || (screensUsing >= 5 && screensUsing / pageCount > 0.4);
+      || (pageCount >= 15 && screensUsing >= 5 && screensUsing / pageCount > 0.4);
     tables.push({
       id: `T${String(++tseq).padStart(3, '0')}`,
       name,
@@ -793,7 +808,7 @@ function buildMenus(
     // URL 경로로 추정한 메뉴
     const groups = new Map<string, ScreenResult[]>();
     for (const s of screens) {
-      if (s.kind !== 'page') continue;
+      if (s.kind !== 'page' || !s.url) continue; // 주소 없는 화면은 메뉴로 열 수 없음
       if (!groups.has(s.group)) groups.set(s.group, []);
       groups.get(s.group)!.push(s);
     }
@@ -801,7 +816,18 @@ function buildMenus(
       const gid = id();
       const label = translate(g.replace(/^\//, '')).text || g;
       out.push({ id: gid, name: label, url: g, depth: 0, screens: [], source: 'url-guess', estimated: true, tables: [] });
-      for (const s of list) out.push({ id: id(), name: s.name, parent: gid, url: s.url, depth: 1, screens: [s.id], source: 'url-guess', estimated: true, tables: [] });
+      const byItemUrl = new Map<string, MenuResult>();
+      for (const s of list) {
+        const n = normUrl(s.url!);
+        const same = byItemUrl.get(n);
+        if (same) {
+          same.screens.push(s.id); // 같은 주소의 여러 화면(단계별 폼 등)은 메뉴 하나로
+          continue;
+        }
+        const m: MenuResult = { id: id(), name: s.name, parent: gid, url: s.url, depth: 1, screens: [s.id], source: 'url-guess', estimated: true, tables: [] };
+        byItemUrl.set(n, m);
+        out.push(m);
+      }
     }
   }
   // 깊이와 정렬

@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html><head><title>주문 목록</title></head>
+<body>
+{{template "nav.html" .}}
+<table id="orders"></table>
+<script>
+fetch('/api/v1/orders').then(r => r.json()).then(render);
+function del(id) { fetch('/api/v1/orders/' + id, { method: 'DELETE' }); }
+</script>
+</body></html>

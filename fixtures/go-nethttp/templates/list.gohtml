@@ -1,0 +1,4 @@
+{{template "header" .}}
+<h1>게시글 목록</h1>
+<ul>{{range .}}<li><a href="/posts/view?id={{.ID}}">{{.Title}}</a></li>{{end}}</ul>
+</body></html>

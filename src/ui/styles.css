@@ -139,13 +139,14 @@ svg.ic { flex: none; display: block; fill: none; stroke: currentColor; stroke-li
 }
 .trow:hover { background: var(--surf2); }
 .trow.sel { background: var(--acc-bg); color: var(--ink); }
-.trow.focus { box-shadow: inset 0 0 0 2px var(--acc-line); }
+.tree:focus-visible { outline: none; }
+.tree:focus-visible .trow.focus { box-shadow: inset 0 0 0 2px var(--acc-line); }
 .trow .tw { width: 18px; height: 20px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--faint); }
 .trow .ti { width: 18px; height: 20px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--icon); }
 .trow .tl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
 .trow .tl .t1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.trow .tl .t1 .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
-.trow .tl .t1 .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.trow .tl .t1 .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 0.01 auto; }
+.trow .tl .t1 .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 100 auto; }
 .trow .tl .t1 .sub.mono { font-family: var(--mono); font-size: 11.5px; }
 .trow .tl .t2 { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trow.cat { font-weight: 700; color: var(--ink); font-size: 13.5px; }
@@ -192,7 +193,7 @@ mark.hit { background: #fff1a8; color: inherit; border-radius: 2px; padding: 0 1
 .tbl tr:last-child td { border-bottom: none; }
 .tbl tr.click { cursor: pointer; }
 .tbl tr.click:hover td { background: var(--surf); }
-.tbl td.c, .tbl th.c { text-align: center; }
+.tbl td.c, .tbl th.c { text-align: center; padding-left: 2px; padding-right: 2px; overflow: visible; text-overflow: clip; }
 .tbl td.r, .tbl th.r { text-align: right; }
 .tbl .two { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .tbl .two .a { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -257,7 +258,8 @@ button.stat:hover { border-color: var(--acc-line); }
 .flow-box.end { border-color: var(--acc-line); background: var(--acc-bg); }
 .flow-box .k { font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .flow-box .v { font-family: var(--mono); font-size: 12px; color: var(--ink); line-height: 1.5; word-break: break-all; }
-.flow-box .v button { font-family: var(--mono); font-size: 12px; }
+.flow-box .v button { font-family: var(--mono); font-size: 12px; white-space: normal; word-break: break-all; text-align: left; }
+.flow-box .v > div { min-width: 0; }
 .flow-arrow { flex: none; width: 26px; display: flex; align-items: center; justify-content: center; color: var(--faint); }
 
 /* 막대 */

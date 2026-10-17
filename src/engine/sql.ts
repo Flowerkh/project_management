@@ -20,7 +20,17 @@ interface Tok {
   t: string;        // 원문
   u: string;        // 대문자
   kind: 'word' | 'punct' | 'param' | 'dyn';
+  /** "이름"·`이름`·[이름] 처럼 따옴표로 감싼 식별자 */
+  quoted?: boolean;
 }
+
+/** 테이블 이름 자리에 올 수 없는 예약어 (따옴표로 감싸면 허용) */
+const RESERVED = new Set([
+  'SELECT', 'WHERE', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'INTERSECT', 'MINUS', 'EXCEPT', 'CONNECT', 'START', 'LIMIT', 'OFFSET',
+  'FETCH', 'FOR', 'ON', 'USING', 'SET', 'VALUES', 'VALUE', 'INTO', 'WHEN', 'THEN', 'RETURNING', 'WITH', 'LEFT', 'RIGHT', 'INNER',
+  'OUTER', 'FULL', 'CROSS', 'JOIN', 'NATURAL', 'STRAIGHT_JOIN', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'CASE', 'END', 'IN', 'IS',
+  'LIKE', 'BETWEEN', 'EXISTS', 'ALL', 'ANY', 'DISTINCT', 'FROM', 'BY', 'ASC', 'DESC',
+]);
 
 /** 주석·문자열·자리표시자를 정리한 SQL */
 export function cleanSql(raw: string): { text: string; dynamicTable: boolean } {
@@ -50,7 +60,7 @@ function tokenize(s: string): Tok[] {
   while ((m = re.exec(s))) {
     if (m[1] !== undefined || m[2] !== undefined || m[3] !== undefined) {
       const t = m[1] ?? m[2] ?? m[3] ?? '';
-      out.push({ t, u: t.toUpperCase(), kind: 'word' });
+      out.push({ t, u: t.toUpperCase(), kind: 'word', quoted: true });
     } else if (m[4]) out.push({ t: ':p', u: ':P', kind: 'param' });
     else if (m[5]) out.push({ t: m[5], u: m[5].toUpperCase(), kind: 'word' });
     else if (m[6]) out.push({ t: m[6], u: m[6], kind: 'punct' });
@@ -64,18 +74,22 @@ function readName(toks: Tok[], i: number): { name: string; end: number } | null 
   const a = toks[i];
   if (!a || a.kind !== 'word') return null;
   let name = a.t;
+  let quoted = !!a.quoted;
   let j = i + 1;
   while (toks[j]?.t === '.' && toks[j + 1]?.kind === 'word') {
     name = toks[j + 1].t; // 스키마 접두어 버림
+    quoted = !!toks[j + 1].quoted;
     j += 2;
   }
   if (toks[j]?.t === '@' && toks[j + 1]?.kind === 'word') j += 2; // DB 링크
-  return { name, end: j };
+  // 따옴표 식별자는 예약어 검사를 건너뛰도록 표시 (\u0001 접두어는 add 에서 뗌)
+  return { name: quoted ? `\u0001${name}` : name, end: j };
 }
 
 function isTableName(name: string): boolean {
+  if (name.startsWith('\u0001')) return name.length > 1;
   const u = name.toUpperCase();
-  if (NOT_TABLE.has(u) || CLAUSE_STOP.has(u)) return false;
+  if (NOT_TABLE.has(u) || RESERVED.has(u)) return false;
   if (/^\d/.test(name)) return false;
   return /^[A-Za-z_À-￿][\w$#À-￿]*$/.test(name);
 }
@@ -121,8 +135,10 @@ export function parseSql(raw: string): SqlParse {
   const toks = tokenize(text);
   const found = new Map<string, Set<Crud>>();
   const cte = new Set<string>();
-  const add = (name: string, crud: Crud) => {
-    if (!isTableName(name) || cte.has(name.toUpperCase())) return;
+  const add = (raw: string, crud: Crud) => {
+    if (!isTableName(raw)) return;
+    const name = raw.replace(/^\u0001/, '');
+    if (cte.has(name.toUpperCase())) return;
     const key = name;
     if (!found.has(key)) found.set(key, new Set());
     found.get(key)!.add(crud);
@@ -295,6 +311,7 @@ export function splitStatements(text: string): { sql: string; offset: number }[]
   let i = 0;
   const n = text.length;
   let inPlsql = false;
+  let sawTerminator = false;
   const push = (end: number) => {
     const sql = text.slice(start, end);
     if (sql.trim()) {
@@ -330,12 +347,14 @@ export function splitStatements(text: string): { sql: string; offset: number }[]
       if (/^(CREATE\s+(OR\s+REPLACE\s+)?(PROCEDURE|FUNCTION|TRIGGER|PACKAGE|TYPE)|BEGIN\b|DECLARE\b)/.test(head) && text.slice(start, i).trim() === '') inPlsql = true;
     }
     if (c === ';' && !inPlsql) {
+      sawTerminator = true;
       push(i);
       start = i + 1;
       i++;
       continue;
     }
     if (c === '/' && (i === 0 || text[i - 1] === '\n') && /^\/[ \t]*(\r?\n|$)/.test(text.slice(i, i + 3))) {
+      sawTerminator = true;
       push(i);
       start = i + 1;
       inPlsql = false;
@@ -345,6 +364,21 @@ export function splitStatements(text: string): { sql: string; offset: number }[]
     i++;
   }
   push(n);
+  // 세미콜론 없이 줄마다 문장인 스크립트(HSQLDB 내보내기 등): 문장 시작 키워드 줄로 다시 나눔
+  if (out.length === 1 && !sawTerminator) {
+    const one = out[0];
+    const re = /^[ \t]*(CREATE|INSERT|DROP|ALTER|COMMENT|GRANT|TRUNCATE)\b/gim;
+    const starts: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(one.sql))) starts.push(m.index);
+    if (starts.length > 1 && starts[0] === 0) {
+      out.length = 0;
+      starts.forEach((st, i) => {
+        const sql = one.sql.slice(st, starts[i + 1] ?? one.sql.length).trim();
+        if (sql) out.push({ sql, offset: one.offset + st });
+      });
+    }
+  }
   return out;
 }
 

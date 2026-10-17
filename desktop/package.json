@@ -1,0 +1,42 @@
+{
+  "name": "project-analyzer-desktop",
+  "productName": "ProjectAnalyzer",
+  "version": "0.2.0",
+  "description": "프로젝트 분석 시스템 (프로토타입)",
+  "author": "project-analyzer",
+  "private": true,
+  "main": "main.cjs",
+  "build": {
+    "appId": "local.project-analyzer",
+    "productName": "ProjectAnalyzer",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "app/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "electronLanguages": [
+      "ko",
+      "en-US"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "playwright-core": "^1.49.1"
+  }
+}

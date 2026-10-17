@@ -81,8 +81,10 @@ export interface SqlFact {
   stmtId?: string;
   kind: 'select' | 'insert' | 'update' | 'delete' | 'merge' | 'call' | 'ddl' | 'other';
   tables: TableRef[];
-  /** 매퍼 동적 태그(if·choose·foreach 등)가 있음 */
+  /** 테이블 이름이 동적(${…})이라 확정 못 함 */
   dynamic?: boolean;
+  /** 매퍼 동적 태그(if·choose·foreach 등)가 있음 (테이블은 확정) */
+  dynamicTags?: boolean;
   /** 공백을 정리한 SQL (최대 4,000자) */
   text: string;
 }
@@ -120,6 +122,8 @@ export interface CodeUnit {
   table?: string;
   /** 클래스 수준 URL 접두어 (Spring 클래스 @RequestMapping, Gin Group 등) */
   routePrefix?: string[];
+  /** 클래스 주석(Javadoc 등) 첫 문장 */
+  doc?: string;
 }
 
 export interface Route {
@@ -153,6 +157,8 @@ export interface MethodUnit {
   redirects?: string[];
   /** @Scheduled(cron) 등 실행 주기 */
   schedule?: string;
+  /** 메서드 주석(Javadoc 등) 첫 문장 */
+  doc?: string;
 }
 
 /** 화면 파일 (JSP·PHP 페이지·템플릿·HTML) */
@@ -241,7 +247,7 @@ export interface Facts {
 export interface ViewResolver {
   prefix: string;
   suffix: string;
-  /** Tiles 등 정의 이름 → 화면 파일 경로 */
+  /** Tiles 등 정의 이름 → 화면 파일 경로. 이름에 '*'가 있으면 와일드카드({1},{2}로 치환) */
   definitions?: Record<string, string>;
   evidence?: Evidence;
 }

@@ -1,0 +1,18 @@
+CREATE TABLE members (
+  id INT NOT NULL AUTO_INCREMENT COMMENT '회원 번호',
+  name VARCHAR(50) NOT NULL COMMENT '이름',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB COMMENT='회원';
+
+CREATE TABLE orders (
+  id INT NOT NULL AUTO_INCREMENT COMMENT '주문 번호',
+  member_id INT NOT NULL COMMENT '회원 번호',
+  status VARCHAR(20) COMMENT '상태',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB COMMENT='주문';
+
+CREATE TABLE order_history (
+  id INT NOT NULL AUTO_INCREMENT,
+  order_id INT NOT NULL,
+  PRIMARY KEY (id)
+) COMMENT='주문 이력';
