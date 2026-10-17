@@ -888,6 +888,342 @@ CREATE TABLE comments (id INT NOT NULL AUTO_INCREMENT, post_id INT, body TEXT, P
 ''')
 
 
+# ------------------------------------------------------------------ Go chi + sqlx (패키지별 도메인, 인터페이스, Mount)
+def go_chi():
+    R = 'go-chi'
+    reset(R)
+    w(R, 'go.mod', '''
+module example.com/member-admin
+
+go 1.22
+
+require (
+	github.com/go-chi/chi/v5 v5.0.12
+	github.com/go-sql-driver/mysql v1.7.1
+	github.com/jmoiron/sqlx v1.3.5
+)
+''')
+    w(R, 'cmd/server/main.go', '''
+package main
+
+import (
+	"html/template"
+	"log"
+	"net/http"
+
+	"example.com/member-admin/internal/api"
+	"example.com/member-admin/internal/member"
+	"example.com/member-admin/internal/order"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
+)
+
+func main() {
+	db := sqlx.MustConnect("mysql", "app:pass@tcp(db:3306)/members")
+	tmpl := template.Must(template.ParseGlob("web/templates/*.html"))
+
+	memberSvc := member.NewService(member.NewMySQLRepository(db))
+	h := member.NewHandler(memberSvc, tmpl)
+	orderSvc := order.NewService(order.NewRepository(db))
+
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Get("/", h.Home)
+	r.Route("/members", func(r chi.Router) {
+		r.Get("/", h.List)
+		r.Post("/", h.Create)
+		r.Route("/{id:[0-9]+}", func(r chi.Router) {
+			r.Get("/", h.Detail)
+			r.Put("/", h.Update)
+		})
+	})
+	r.Mount("/admin", adminRouter(h))
+	api.Register(r, orderSvc)
+	log.Fatal(http.ListenAndServe(":8080", r))
+}
+
+func adminRouter(h *member.Handler) http.Handler {
+	r := chi.NewRouter()
+	r.Get("/members/stats", h.Stats)
+	return r
+}
+''')
+    w(R, 'internal/member/model.go', '''
+package member
+
+type Member struct {
+	ID    int64  `db:"id"`
+	Name  string `db:"name"`
+	Email string `db:"email"`
+}
+''')
+    w(R, 'internal/member/service.go', '''
+package member
+
+import "context"
+
+// Service 회원 업무
+type Service interface {
+	List(ctx context.Context) ([]Member, error)
+	Get(ctx context.Context, id int64) (*Member, error)
+	Save(ctx context.Context, m *Member) error
+	Stats(ctx context.Context) (int, error)
+}
+
+type service struct {
+	repo Repository
+}
+
+func NewService(r Repository) Service { return &service{repo: r} }
+
+func (s *service) List(ctx context.Context) ([]Member, error) { return s.repo.FindAll(ctx) }
+
+func (s *service) Get(ctx context.Context, id int64) (*Member, error) { return s.repo.FindByID(ctx, id) }
+
+func (s *service) Save(ctx context.Context, m *Member) error {
+	if m.ID == 0 {
+		return s.repo.Insert(ctx, m)
+	}
+	if err := s.repo.Update(ctx, m); err != nil {
+		return err
+	}
+	return s.repo.WriteLog(ctx, m.ID, "update")
+}
+
+func (s *service) Stats(ctx context.Context) (int, error) { return s.repo.Count(ctx) }
+''')
+    w(R, 'internal/member/repository.go', '''
+package member
+
+import (
+	"context"
+
+	"github.com/jmoiron/sqlx"
+)
+
+type Repository interface {
+	FindAll(ctx context.Context) ([]Member, error)
+	FindByID(ctx context.Context, id int64) (*Member, error)
+	Insert(ctx context.Context, m *Member) error
+	Update(ctx context.Context, m *Member) error
+	WriteLog(ctx context.Context, id int64, action string) error
+	Count(ctx context.Context) (int, error)
+}
+
+type mysqlRepository struct {
+	db *sqlx.DB
+}
+
+func NewMySQLRepository(db *sqlx.DB) Repository { return &mysqlRepository{db: db} }
+
+func (r *mysqlRepository) FindAll(ctx context.Context) ([]Member, error) {
+	var out []Member
+	err := r.db.SelectContext(ctx, &out, queryListMembers)
+	return out, err
+}
+
+func (r *mysqlRepository) FindByID(ctx context.Context, id int64) (*Member, error) {
+	var m Member
+	err := r.db.GetContext(ctx, &m, "SELECT id, name, email FROM members WHERE id = ?", id)
+	return &m, err
+}
+
+func (r *mysqlRepository) Insert(ctx context.Context, m *Member) error {
+	_, err := r.db.NamedExecContext(ctx, "INSERT INTO members (name, email) VALUES (:name, :email)", m)
+	return err
+}
+
+func (r *mysqlRepository) Update(ctx context.Context, m *Member) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE members SET name = ?, email = ? WHERE id = ?`, m.Name, m.Email, m.ID)
+	return err
+}
+
+func (r *mysqlRepository) WriteLog(ctx context.Context, id int64, action string) error {
+	_, err := r.db.ExecContext(ctx, "INSERT INTO member_logs (member_id, action) VALUES (?, ?)", id, action)
+	return err
+}
+
+func (r *mysqlRepository) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.GetContext(ctx, &n, "SELECT COUNT(*) FROM members")
+	return n, err
+}
+''')
+    w(R, 'internal/member/fake.go', '''
+package member
+
+import "context"
+
+// 개발용 가짜 저장소 (구현체 후보에서 빠져야 함)
+type fakeRepository struct{}
+
+func (fakeRepository) FindAll(ctx context.Context) ([]Member, error)            { return nil, nil }
+func (fakeRepository) FindByID(ctx context.Context, id int64) (*Member, error)  { return nil, nil }
+func (fakeRepository) Insert(ctx context.Context, m *Member) error              { return nil }
+func (fakeRepository) Update(ctx context.Context, m *Member) error              { return nil }
+func (fakeRepository) WriteLog(ctx context.Context, id int64, a string) error   { return nil }
+func (fakeRepository) Count(ctx context.Context) (int, error)                   { return 0, nil }
+''')
+    w(R, 'internal/member/queries.go', '''
+package member
+
+const queryListMembers = `SELECT m.id, m.name, m.email, g.name AS grade
+  FROM members m
+  LEFT JOIN member_grades g ON g.id = m.grade_id
+ ORDER BY m.id DESC`
+''')
+    w(R, 'internal/member/handler.go', '''
+package member
+
+import (
+	"html/template"
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+)
+
+type Handler struct {
+	svc  Service
+	tmpl *template.Template
+}
+
+func NewHandler(svc Service, tmpl *template.Template) *Handler { return &Handler{svc: svc, tmpl: tmpl} }
+
+func (h *Handler) render(w http.ResponseWriter, name string, data any) {
+	if err := h.tmpl.ExecuteTemplate(w, name+".html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// Home 첫 화면
+func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
+	h.render(w, "home", nil)
+}
+
+// List 회원 목록
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	members, _ := h.svc.List(r.Context())
+	h.render(w, "member_list", members)
+}
+
+func (h *Handler) Detail(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	m, _ := h.svc.Get(r.Context(), id)
+	h.render(w, "member_detail", m)
+}
+
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	m := &Member{Name: r.FormValue("name"), Email: r.FormValue("email")}
+	_ = h.svc.Save(r.Context(), m)
+	http.Redirect(w, r, "/members", http.StatusSeeOther)
+}
+
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	_ = h.svc.Save(r.Context(), &Member{ID: id, Name: r.FormValue("name")})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Stats 관리자 회원 통계
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	n, _ := h.svc.Stats(r.Context())
+	w.Write([]byte(strconv.Itoa(n)))
+}
+''')
+    w(R, 'internal/order/order.go', '''
+package order
+
+import "github.com/jmoiron/sqlx"
+
+// Service 주문 업무 (회원 패키지와 같은 이름의 타입: 섞이면 안 됨)
+type Service interface {
+	List() ([]Order, error)
+}
+
+type Order struct {
+	ID     int64
+	Status string
+}
+
+type Repository struct {
+	db *sqlx.DB
+}
+
+func NewRepository(db *sqlx.DB) *Repository { return &Repository{db: db} }
+
+func (r *Repository) Find() ([]Order, error) {
+	var out []Order
+	err := r.db.Select(&out, "SELECT id, status FROM orders ORDER BY id DESC")
+	return out, err
+}
+
+type service struct {
+	repo *Repository
+}
+
+func NewService(r *Repository) Service { return &service{repo: r} }
+
+func (s *service) List() ([]Order, error) { return s.repo.Find() }
+''')
+    w(R, 'internal/api/routes.go', '''
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"example.com/member-admin/internal/order"
+	"github.com/go-chi/chi/v5"
+)
+
+// Register API 라우트
+func Register(r chi.Router, svc order.Service) {
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/orders", listOrders(svc))
+	})
+}
+
+func listOrders(svc order.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		orders, _ := svc.List()
+		json.NewEncoder(w).Encode(orders)
+	}
+}
+''')
+    w(R, 'web/templates/nav.html', '{{define "nav"}}<nav><a href="/">홈</a> <a href="/members">회원</a></nav>{{end}}\n')
+    w(R, 'web/templates/home.html', '''
+<html><head><title>회원 관리</title></head>
+<body>{{template "nav" .}}<a href="/members">회원 목록</a></body></html>
+''')
+    w(R, 'web/templates/member_list.html', '''
+<html><head><title>회원 목록</title></head>
+<body>{{template "nav" .}}
+<ul>{{range .}}<li><a href="/members/{{.ID}}">{{.Name}}</a></li>{{end}}</ul>
+<form method="post" action="/members"><input name="name"><input name="email"><button>등록</button></form>
+</body></html>
+''')
+    w(R, 'web/templates/member_detail.html', '''
+<html><head><title>회원 상세</title></head>
+<body>{{template "nav" .}}
+<input id="name" value="{{.Name}}">
+<script>
+function save(id) {
+  fetch('/members/' + id, { method: 'PUT', body: new FormData() });
+}
+</script>
+</body></html>
+''')
+    w(R, 'schema.sql', '''
+CREATE TABLE member_grades (id INT NOT NULL, name VARCHAR(20), PRIMARY KEY (id)) COMMENT='회원 등급';
+CREATE TABLE members (id BIGINT NOT NULL AUTO_INCREMENT, grade_id INT, name VARCHAR(50), email VARCHAR(100), PRIMARY KEY (id)) COMMENT='회원';
+CREATE TABLE member_logs (id BIGINT NOT NULL AUTO_INCREMENT, member_id BIGINT, action VARCHAR(20), PRIMARY KEY (id)) COMMENT='회원 변경 이력';
+CREATE TABLE orders (id BIGINT NOT NULL AUTO_INCREMENT, status VARCHAR(20), PRIMARY KEY (id)) COMMENT='주문';
+''')
+
+
 if __name__ == '__main__':
     os.makedirs(BASE, exist_ok=True)
     laravel()
@@ -895,4 +1231,5 @@ if __name__ == '__main__':
     plain()
     go_gin()
     go_nethttp()
-    print('generated: php-laravel, php-ci3, php-plain, go-gin, go-nethttp')
+    go_chi()
+    print('generated: php-laravel, php-ci3, php-plain, go-gin, go-nethttp, go-chi')

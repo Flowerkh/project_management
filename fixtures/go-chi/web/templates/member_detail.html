@@ -1,0 +1,9 @@
+<html><head><title>회원 상세</title></head>
+<body>{{template "nav" .}}
+<input id="name" value="{{.Name}}">
+<script>
+function save(id) {
+  fetch('/members/' + id, { method: 'PUT', body: new FormData() });
+}
+</script>
+</body></html>

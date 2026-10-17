@@ -99,9 +99,9 @@ function syntaxSegments(line: string, lang: FileInfo['lang'], inBlock: boolean):
       i += m[0].length;
       continue;
     }
-    if (/[A-Za-z_@]/.test(ch)) {
-      const m = /^@?[A-Za-z_][\w]*/.exec(rest)!;
-      const w = m[0];
+    const wm = /[A-Za-z_@]/.test(ch) ? /^@?[A-Za-z_][\w]*/.exec(rest) : null;
+    if (wm) {
+      const w = wm[0];
       const isKw = SQL_KW.has(w) || (lang !== 'SQL' && lang !== 'XML' && JAVA_KW.has(w)) || (w.startsWith('@') && (lang === 'Java' || lang === 'Kotlin'));
       if (isKw) {
         flush();

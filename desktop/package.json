@@ -32,7 +32,14 @@
     "electronLanguages": [
       "ko",
       "en-US"
-    ]
+    ],
+    "extraFiles": [
+      {
+        "from": "../docs/사용방법.txt",
+        "to": "README.txt"
+      }
+    ],
+    "compression": "maximum"
   },
   "devDependencies": {
     "electron": "^33.4.11",

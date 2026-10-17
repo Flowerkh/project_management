@@ -200,7 +200,9 @@ export function link(facts: Facts): Linked {
       }
     }
     for (const c of m.calls) {
-      let targets = targetsOf(unit, c.via).filter((t) => t.id !== unit.id || c.via.startsWith('this'));
+      // 분석기가 대상 유닛을 정확히 안 호출(via = 그 유닛의 fqn)은 이름 추측 없이 그 유닛만
+      const exact = c.via ? unitsByFqn.get(c.via.replace(/^this\./, '').toLowerCase()) : undefined;
+      let targets = exact ? [exact] : targetsOf(unit, c.via).filter((t) => t.id !== unit.id || c.via.startsWith('this'));
       let methods: MRef[] = [];
       for (const t of targets) for (const tm of t.methods) if (tm.name === c.method) methods.push({ unit: t, m: tm });
       if (!methods.length && !targets.length) {
@@ -209,7 +211,7 @@ export function link(facts: Facts): Linked {
         const units = new Set(cand.map((x) => x.unit.id));
         if (units.size === 1 && c.method.length >= 5) methods = cand;
       }
-      if (unit.kind === 'controller') methods = methods.filter((x) => x.unit.kind !== 'controller' || x.unit.id === unit.id);
+      if (unit.kind === 'controller' && !exact) methods = methods.filter((x) => x.unit.kind !== 'controller' || x.unit.id === unit.id);
       for (const x of methods) {
         const sub = reach(x.unit, x.m, depth + 1, stack);
         mergeReach(r, sub);
@@ -444,7 +446,7 @@ export function link(facts: Facts): Linked {
     for (const [fid, layer] of total.files) if (!files.has(fid)) files.set(fid, { layer });
     if (total.tables.size && score >= 1) score = 2;
     const estimated = [...total.tables.values()].some((t) => t.estimated) || [...total.sql].some((id) => sqlById.get(id)?.dynamic);
-    const name = v.title?.trim() || nameFromPath(urls[0] ?? f.path);
+    const name = v.title?.trim() || nameFromPath(urls[0] ?? f.path).trim() || nameFromPath(f.path).trim() || f.name;
     const popup = /pop(up)?/i.test(f.name) || /pop(up)?/i.test(urls[0] ?? '');
     const scr: ScreenResult = {
       id: nextScreenId(),

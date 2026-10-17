@@ -210,8 +210,11 @@ export function guessDomain(texts: string[]): string | null {
   const joined = texts.join(' ');
   let best: { name: string; score: number } | null = null;
   for (const d of DOMAINS) {
-    const score = d.words.reduce((s, w) => s + (joined.split(w).length - 1), 0);
-    if (score > 2 && (!best || score > best.score)) best = { name: d.name, score };
+    const counts = d.words.map((w) => joined.split(w).length - 1);
+    const score = counts.reduce((a, b) => a + b, 0);
+    const distinct = counts.filter((c) => c > 0).length;
+    // 서로 다른 업무 단어가 3개 이상 보여야 업무 성격으로 본다
+    if (distinct >= 3 && score >= 4 && (!best || score > best.score)) best = { name: d.name, score };
   }
   return best?.name ?? null;
 }

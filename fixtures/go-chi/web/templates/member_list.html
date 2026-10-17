@@ -1,0 +1,5 @@
+<html><head><title>회원 목록</title></head>
+<body>{{template "nav" .}}
+<ul>{{range .}}<li><a href="/members/{{.ID}}">{{.Name}}</a></li>{{end}}</ul>
+<form method="post" action="/members"><input name="name"><input name="email"><button>등록</button></form>
+</body></html>

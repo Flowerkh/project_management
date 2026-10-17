@@ -19,7 +19,7 @@ def main():
         b = p.chromium.launch()
         pg = b.new_page(viewport={'width': 1440, 'height': 900})
         errors = []
-        pg.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
+        pg.on('pageerror', lambda e: errors.append(f'pageerror: {e} {getattr(e, "stack", "")[:1500]}'))
         pg.on('console', lambda m: m.type == 'error' and errors.append(f'console: {m.text}'))
         pg.goto('file://' + HTML)
         pg.wait_for_timeout(300)

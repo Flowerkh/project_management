@@ -9,6 +9,8 @@ export function languages(facts: Facts): AnalysisResult['languages'] {
   const acc = new Map<Lang, { files: number; lines: number }>();
   for (const f of facts.files) {
     if (f.excluded || f.layer === 'TEST') continue;
+    // DDL·데이터 스크립트는 프로그램 언어 비율에서 뺀다 (덤프 파일이 비율을 왜곡함)
+    if (f.lang === 'SQL' && f.layer !== 'BATCH') continue;
     const lang: Lang = PROGRAM_LANGS.includes(f.lang) ? f.lang : 'Other';
     const a = acc.get(lang) ?? { files: 0, lines: 0 };
     a.files++;
@@ -98,11 +100,12 @@ export function describe(facts: Facts, linked: Linked, types: SystemType[], proj
   const fw = facts.tech.filter((t) => t.layer === '컨트롤러' && t.weight >= 2).sort((a, b) => b.weight - a.weight).map((t) => t.name);
   const egov = fw.includes('전자정부 표준프레임워크');
   const main = egov ? `전자정부 표준프레임워크(${fw.find((x) => x !== '전자정부 표준프레임워크') ?? 'Spring MVC'})` : fw[0];
+  // 소스에 실제로 적힌 한글만 쓴다: 메뉴 데이터의 메뉴명, 화면 제목, DDL 주석 (영문 이름을 번역한 말은 빼서 오판을 줄임)
   const words = [
-    ...linked.menus.map((m) => m.name),
-    ...linked.screens.map((s) => s.name),
-    ...linked.tables.map((t) => t.role),
-  ];
+    ...linked.menus.filter((m) => !m.estimated && m.source !== 'url-guess').map((m) => m.name),
+    ...linked.screens.filter((s) => s.evidence.some((e) => e.text && e.text.trim() === s.name)).map((s) => s.name),
+    ...linked.tables.filter((t) => t.comment).map((t) => t.comment ?? ''),
+  ].filter((w) => /[가-힣]/.test(w));
   const domain = guessDomain(words);
   const admin = /admin|관리자|mng|manage/i.test(projectName) || linked.screens.filter((s) => /관리/.test(s.name)).length > linked.screens.length * 0.3;
   const typeWord = types.includes('웹') ? (admin ? '관리자 웹' : '웹') : types.includes('API 서버') ? 'API 서버' : types.includes('모바일 앱') ? '모바일 앱' : types.includes('배치') ? '배치 시스템' : '시스템';

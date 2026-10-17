@@ -5,6 +5,6 @@ cd "$(dirname "$0")/.."
 node scripts/build.mjs
 rm -rf desktop/app
 cp -r dist/app desktop/app
-cp docs/사용방법.txt desktop/app/사용방법.txt 2>/dev/null || true
+
 cd desktop
 npx electron-builder --win zip --x64 --publish never

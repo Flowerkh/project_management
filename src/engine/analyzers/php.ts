@@ -5,6 +5,7 @@ import type { CallRef, CodeUnit, Crud, DdlColumn, FileInfo, MethodUnit, Route, T
 import { baseName, dirName, makeLineIndex, normalizePath } from '../files';
 import { compactSql, isSqlLike, parseSql } from '../sql';
 import { argClass, argString, lexPhp, matchClose, splitArgs, simpleName, type PT } from './php-lex';
+import { pluralWord, singularWord } from './inflect';
 import { extractRefs, extractScripts, extractTitle, normalizeRef } from './web-refs';
 
 type Framework = 'laravel' | 'ci3' | 'ci4' | 'plain';
@@ -36,6 +37,8 @@ interface ModelOp {
   file: string;
   line: number;
   instance?: boolean;
+  /** 다대다 중간 테이블 연산 (attach·detach·sync…) */
+  pivot?: boolean;
 }
 
 interface ClassInfo {
@@ -44,12 +47,17 @@ interface ClassInfo {
   fw: Framework;
   root: string;
   relations: Map<string, string>; // 관계 메서드 → 대상 모델
+  /** 다대다 관계 → 중간 테이블 (null = 규칙으로) */
+  pivots: Map<string, string | null>;
+  /** use TraitA, TraitB; */
+  traits: string[];
   tableLiteral?: string;
   isModelBase?: boolean;
   visibility: Map<MethodUnit, string>;
   params: Map<MethodUnit, number>;
   ci3Seg?: string; // CI3 컨트롤러 URL 조각 (admin/order)
   ci4?: boolean;
+  ci4Seg?: string; // CI4 컨트롤러 URL 조각 (admin/users)
 }
 
 interface PendingRef {
@@ -65,6 +73,8 @@ interface PhpState {
   routes: RouteDef[];
   ci3Routes: { root: string; from: string; to: string; methods: string[]; file: string; line: number }[];
   ci4Auto: Set<string>;
+  /** CI4 자동 라우팅 설정 (root → 개선된 자동 라우팅, URI 카멜 변환) */
+  ci4Opts: Map<string, { improved?: boolean; camel?: boolean }>;
   modelOps: ModelOp[];
   classes: Map<string, ClassInfo[]>; // 단순 이름(소문자) → 클래스
   pendingRefs: PendingRef[];
@@ -102,12 +112,21 @@ function state(ctx: Ctx): PhpState {
   }
   for (const r of laravel) ci4.delete(r);
   void has;
+  // .env·.env.example 의 DB_CONNECTION=mysql / database.default.DBDriver = MySQLi
+  for (const f of ctx.facts.files) {
+    if (!/^\.env(\.example|\.sample|\.dist)?$|^env$/.test(f.name)) continue;
+    const text = ctx.facts.texts.get(f.id) ?? '';
+    const m = /^\s*DB_CONNECTION\s*=\s*["']?(\w+)/m.exec(text) ?? /^\s*database\.default\.DBDriver\s*=\s*["']?(\w+)/m.exec(text);
+    const name = m ? ({ mysqli: 'MySQL', postgre: 'PostgreSQL', sqlite3: 'SQLite', oci8: 'Oracle' } as Record<string, string>)[m[1].toLowerCase()] ?? DB_DRIVER[m[1].toLowerCase()] : undefined;
+    if (name && m) ctx.hit('DB', name, f.id, makeLineIndex(text)(m.index), 1);
+  }
   st = {
     roots: { laravel: [...laravel], ci3: [...ci3], ci4: [...ci4] },
     indexDirs,
     routes: [],
     ci3Routes: [],
     ci4Auto: new Set(),
+    ci4Opts: new Map(),
     modelOps: [],
     classes: new Map(),
     pendingRefs: [],
@@ -152,19 +171,11 @@ function snake(name: string): string {
 }
 
 export function plural(word: string): string {
-  const w = word;
-  if (/(s|x|z|ch|sh)$/.test(w)) return `${w}es`;
-  if (/[^aeiou]y$/.test(w)) return `${w.slice(0, -1)}ies`;
-  if (/(child)$/.test(w)) return `${w}ren`;
-  if (/^(person)$/.test(w)) return 'people';
-  return `${w}s`;
+  return pluralWord(word);
 }
 
 export function singular(word: string): string {
-  if (/ies$/.test(word)) return `${word.slice(0, -3)}y`;
-  if (/(ses|xes|zes|ches|shes)$/.test(word)) return word.slice(0, -2);
-  if (/s$/.test(word) && !/ss$/.test(word)) return word.slice(0, -1);
-  return word;
+  return singularWord(word);
 }
 
 function eloquentTable(cls: string): string {
@@ -358,6 +369,37 @@ function analyzeBody(t: PT[], a: number, b: number, bc: BodyCtx, params: Record<
     } else if (x.k === 'id' && simpleName(x.v) === 'DB' && t[i + 3]?.v === '::' && t[i + 4]?.v === 'table' && t[i + 5]?.v === '(') {
       const s = argString(t, splitArgs(t, i + 5)[0] ?? [0, 0]);
       if (s) builders[v] = tableArg(s);
+    } else if (authUserAt(i + 2) > 0) {
+      // $user = auth()->user() / Auth::user() / $request->user()
+      locals[v] = 'User';
+    } else if (x.k === 'var' && locals[x.v] && t[i + 3]?.v === '->' && t[i + 4]?.k === 'id' && t[i + 5]?.v === '(') {
+      // $article = $user->articles()->create([...]) → 관계 대상 모델 (마무리에서 풀기)
+      const ch = readChain(t, i + 5, b);
+      if (ch.calls.length && RELATION_WRITE.test(ch.calls[ch.calls.length - 1].name) && !locals[x.v].startsWith('@rel:')) locals[v] = `@rel:${locals[x.v]}:${t[i + 4].v}`;
+    }
+  }
+
+  /** 위치 k 가 로그인 사용자 식이면 user() 의 여는 괄호 위치 */
+  function authUserAt(k: number): number {
+    if (t[k]?.k === 'id' && t[k].v === 'auth' && t[k + 1]?.v === '(' ) {
+      const c = matchClose(t, k + 1);
+      if (t[c + 1]?.v === '->' && t[c + 2]?.v === 'user' && t[c + 3]?.v === '(') return c + 3;
+      return -1;
+    }
+    if (t[k]?.k === 'id' && simpleName(t[k].v) === 'Auth' && t[k + 1]?.v === '::' && t[k + 2]?.v === 'user' && t[k + 3]?.v === '(') return k + 3;
+    if (t[k]?.k === 'var' && (t[k].v === 'request' || /Request$/.test(locals[t[k].v] ?? '')) && t[k + 1]?.v === '->' && t[k + 2]?.v === 'user' && t[k + 3]?.v === '(') return k + 3;
+    return -1;
+  }
+
+  /** 인스턴스(모델 타입 model)의 체인: 관계 생성·중간 테이블 연산 */
+  function relationOps(model: string, rel: string, ch: { calls: { name: string; open: number }[] }, pos: number): void {
+    if (!ch.calls.length) return;
+    const last = ch.calls[ch.calls.length - 1].name;
+    const first = ch.calls[0].name;
+    if (PIVOT_OPS[first.toLowerCase()]) {
+      bc.st.modelOps.push({ method: bc.method, model, cls: clsName, ops: [first], joins: [], relations: [rel], file: bc.f.id, line: bc.lineOf(pos), instance: true, pivot: true });
+    } else if (RELATION_WRITE.test(last)) {
+      bc.st.modelOps.push({ method: bc.method, model, cls: clsName, ops: [last], joins: [], relations: [rel], file: bc.f.id, line: bc.lineOf(pos), instance: true });
     }
   }
 
@@ -404,11 +446,28 @@ function analyzeBody(t: PT[], a: number, b: number, bc: BodyCtx, params: Record<
       // $this->m(
       if (t[i + 3]?.v === '(') {
         if (clsName) bc.method.calls.push({ via: `this.${clsName}`, method: p1, line: bc.lineOf(x.p) });
+        // $this->items()->create() / $this->tags()->attach() (모델·트레이트 안)
+        if (clsName) relationOps(clsName, p1, readChain(t, i + 3, b), x.p);
         // CI4: $this->include('x') / $this->extend('x') 는 뷰에서만
         i = i + 2;
         continue;
       }
       continue;
+    }
+    // ---------------- 로그인 사용자: auth()->user()->m( / Auth::user()->m( / $request->user()->m(
+    if (x.k === 'id' || x.k === 'var') {
+      const uo = authUserAt(i);
+      if (uo > 0) {
+        const ch = readChain(t, uo, b);
+        if (ch.calls.length) {
+          const [first, ...rest] = ch.calls;
+          bc.method.calls.push({ via: 'User', method: first.name, line: bc.lineOf(x.p) });
+          bc.st.modelOps.push({ method: bc.method, model: 'User', cls: clsName, ops: ch.calls.map((c) => c.name), joins: [], relations: [], file: bc.f.id, line: bc.lineOf(x.p), instance: true });
+          relationOps('User', first.name, { calls: rest }, x.p);
+        }
+        i = uo;
+        continue;
+      }
     }
     // ---------------- $var->…
     if (x.k === 'var' && x.v !== 'this' && (t[i + 1]?.v === '->' || t[i + 1]?.v === '?->') && t[i + 2]?.k === 'id' && t[i + 3]?.v === '(') {
@@ -431,17 +490,17 @@ function analyzeBody(t: PT[], a: number, b: number, bc: BodyCtx, params: Record<
           method: bc.method, model: type, cls: clsName, ops: [m, ...ch.calls.map((c) => c.name)], joins: [], relations,
           created: created.has(v), file: bc.f.id, line: bc.lineOf(x.p), instance: true,
         });
-        // $order->items()->create(...) : 관계 생성
-        if (ch.calls.length && /^(create|createMany|save|saveMany|insert|update|delete)$/.test(ch.calls[ch.calls.length - 1].name)) {
-          bc.st.modelOps.push({
-            method: bc.method, model: type, cls: clsName, ops: [ch.calls[ch.calls.length - 1].name], joins: [], relations: [m],
-            file: bc.f.id, line: bc.lineOf(x.p), instance: true,
-          });
-        }
+        // $order->items()->create(...) : 관계 생성, $post->tags()->sync() : 중간 테이블
+        relationOps(type, m, ch, x.p);
         i = i + 2;
         continue;
       }
       continue;
+    }
+    // ---------------- Auth::attempt(…) / auth()->attempt(…): 사용자 테이블 조회
+    if ((x.k === 'id' && simpleName(x.v) === 'Auth' && t[i + 1]?.v === '::' && /^(attempt|once|validate|attemptWhen)$/.test(t[i + 2]?.v ?? ''))
+      || (x.k === 'id' && x.v === 'auth' && t[i + 1]?.v === '(' && /^(attempt|once|validate|attemptWhen)$/.test(t[matchClose(t, i + 1) + 2]?.v ?? ''))) {
+      bc.st.modelOps.push({ method: bc.method, model: 'User', cls: clsName, ops: ['first'], joins: [], relations: [], file: bc.f.id, line: bc.lineOf(x.p) });
     }
     // ---------------- Class::m(
     if (x.k === 'id' && t[i + 1]?.v === '::' && t[i + 2]?.k === 'id' && t[i + 3]?.v === '(') {
@@ -748,17 +807,43 @@ function parseProps(t: PT[], cls: ParsedClass, fns: ParsedFn[]): { fields: Recor
   return { fields, table };
 }
 
-function relationsOf(t: PT[], fn: ParsedFn): string | null {
+/** 관계 메서드: return $this->hasMany(Item::class) / belongsToMany(Tag::class, 'post_tag') */
+function relationsOf(t: PT[], fn: ParsedFn): { target: string; many: boolean; table?: string } | null {
   if (fn.bodyOpen < 0) return null;
   for (let i = fn.bodyOpen; i < fn.bodyClose - 4; i++) {
-    if (t[i].k === 'var' && t[i].v === 'this' && t[i + 1].v === '->' && /^(hasMany|hasOne|belongsTo|belongsToMany|morphMany|morphOne|hasManyThrough|hasOneThrough|morphToMany)$/.test(t[i + 2].v) && t[i + 3].v === '(') {
-      const arg = splitArgs(t, i + 3)[0];
+    if (t[i].k === 'var' && t[i].v === 'this' && t[i + 1].v === '->' && /^(hasMany|hasOne|belongsTo|belongsToMany|morphMany|morphOne|hasManyThrough|hasOneThrough|morphToMany|morphedByMany)$/.test(t[i + 2].v) && t[i + 3].v === '(') {
+      const args = splitArgs(t, i + 3);
+      const arg = args[0];
       if (!arg) return null;
-      return argClass(t, arg) ?? (argString(t, arg) ? simpleName(argString(t, arg)!) : null);
+      const target = argClass(t, arg) ?? (argString(t, arg) ? simpleName(argString(t, arg)!) : null);
+      if (!target) return null;
+      const many = /^(belongsToMany|morphToMany|morphedByMany)$/.test(t[i + 2].v);
+      const table = many && args[1] ? argString(t, args[1]) : null;
+      return { target, many, ...(table && !table.includes('${v}') ? { table: tableArg(table) } : {}) };
     }
   }
   return null;
 }
+
+/** 클래스 본문의 use TraitA, TraitB; */
+function classTraits(t: PT[], c: ParsedClass): string[] {
+  const out: string[] = [];
+  let d = 0;
+  for (let i = c.open + 1; i < c.close; i++) {
+    const x = t[i];
+    if (x.k === 'op' && x.v === '{') d++;
+    else if (x.k === 'op' && x.v === '}') d--;
+    else if (d === 0 && x.k === 'id' && x.v === 'use') {
+      for (let k = i + 1; k < c.close && t[k].v !== ';' && t[k].v !== '{'; k++) if (t[k].k === 'id') out.push(simpleName(t[k].v));
+    }
+  }
+  return out;
+}
+
+const PIVOT_OPS: Record<string, Crud[]> = {
+  attach: ['C'], detach: ['D'], sync: ['C', 'D'], syncwithoutdetaching: ['C'], toggle: ['C', 'D'], updateexistingpivot: ['U'], syncwithpivotvalues: ['C', 'D'],
+};
+const RELATION_WRITE = /^(create|createMany|save|saveMany|insert|update|delete|firstOrCreate|updateOrCreate)$/;
 
 // ------------------------------------------------------------------ 라우트 파일 (Laravel)
 
@@ -883,7 +968,9 @@ function parseLaravelRoutes(t: PT[], a: number, b: number, g: LaravelGroup, f: F
       const ms: string[] = [];
       if (args[0]) for (let k = args[0][0]; k < args[0][1]; k++) if (t[k].k === 'str') ms.push(t[k].v.toUpperCase());
       const uri = args[1] ? argString(t, args[1]) : null;
-      if (uri !== null) addRoute(ms.length ? ms : ['*'], uri, args[2], fullName);
+      // PUT·PATCH 짝은 하나로 (같은 처리)
+      const ms2 = ms.includes('PUT') && ms.includes('PATCH') ? ms.filter((x) => x !== 'PATCH') : ms;
+      if (uri !== null) addRoute(ms2.length ? ms2 : ['*'], uri, args[2], fullName);
     } else if (verb === 'view') {
       const uri = args[0] ? argString(t, args[0]) : null;
       const vn = args[1] ? argString(t, args[1]) : null;
@@ -908,17 +995,32 @@ function parseLaravelRoutes(t: PT[], a: number, b: number, g: LaravelGroup, f: F
           if (c.name === 'only') only = list;
           if (c.name === 'except') except = list;
         }
+        // 세 번째 인자 ['only' => [...]] / ['except' => [...]]
+        const opt = args[2];
+        if (opt) {
+          for (let k = opt[0]; k < opt[1] - 2; k++) {
+            if (t[k].k !== 'str' || (t[k].v !== 'only' && t[k].v !== 'except') || t[k + 1].v !== '=>') continue;
+            const open = t[k + 2].v === '[' ? k + 2 : t[k + 2].v === 'array' && t[k + 3]?.v === '(' ? k + 3 : -1;
+            if (open < 0) continue;
+            const close = matchClose(t, open);
+            const list: string[] = [];
+            for (let q = open; q < close; q++) if (t[q].k === 'str') list.push(t[q].v);
+            if (t[k].v === 'only') only = list;
+            else except = list;
+            k = close;
+          }
+        }
         const segs = res.split('.');
         let base = '';
         segs.forEach((s, idx) => {
           base = joinUrl(base, s);
           if (idx < segs.length - 1) base = joinUrl(base, `{${singular(s)}}`);
         });
-        const last = segs[segs.length - 1];
+        const last = segs[segs.length - 1].split('/').pop() ?? '';
         const param = `{${singular(last.replace(/-/g, '_'))}}`;
         const actions: [string, string[], string][] = [
           ['index', ['GET'], ''], ['create', ['GET'], '/create'], ['store', ['POST'], ''], ['show', ['GET'], `/${param}`],
-          ['edit', ['GET'], `/${param}/edit`], ['update', ['PUT', 'PATCH'], `/${param}`], ['destroy', ['DELETE'], `/${param}`],
+          ['edit', ['GET'], `/${param}/edit`], ['update', ['PUT'], `/${param}`], ['destroy', ['DELETE'], `/${param}`],
         ];
         for (const [act, ms, suffix] of actions) {
           if (verb === 'apiresource' && (act === 'create' || act === 'edit')) continue;
@@ -1203,7 +1305,7 @@ function makeView(f: FileInfo, text: string, fw: Framework, root: string, ctx: C
   if (directUrl) view.directUrl = directUrl;
   if (!f.name.endsWith('.blade.php')) ctx.hit('화면', fw === 'plain' ? 'PHP 페이지' : 'PHP 템플릿', f.id, 1, 0.5);
   const p = f.path.toLowerCase();
-  if (/\/(layouts?|partials?|includes?|inc|components|templates?|elements|common|shared)\//.test(p) || /\/_[^/]+$/.test(p) || /^(header|footer|sidebar|nav|navbar|menu|head|top|bottom|layout|base|master)(\.blade)?\.php$/.test(f.name.toLowerCase())) {
+  if (/\/(layouts?|partials?|parts|includes?|inc|components|templates?|elements|common|shared)\//.test(p) || /\/_[^/]+$/.test(p) || /^(header|footer|sidebar|nav|navbar|menu|head|top|bottom|layout|base|master)(\.blade)?\.php$/.test(f.name.toLowerCase())) {
     view.fragment = true;
   }
   ctx.facts.views.push(view);
@@ -1243,9 +1345,14 @@ function analyzeClassFile(f: FileInfo, t: PT[], ctx: Ctx, st: PhpState, fw: Fram
       file: f.id, name: c.name, fqn: ns ? `${ns}\\${c.name}` : c.name, kind, line: lineOf(t[c.open].p),
       extendsOrImplements: [c.ext, ...c.impl].filter(Boolean) as string[], fields, methods: [],
     });
-    const info: ClassInfo = { unit, ext: c.ext, fw, root, relations: new Map(), visibility: new Map(), params: new Map(), ...(props.table ? { tableLiteral: props.table } : {}) };
+    const info: ClassInfo = {
+      unit, ext: c.ext, fw, root, relations: new Map(), pivots: new Map(), traits: classTraits(t, c), visibility: new Map(), params: new Map(), ...(props.table ? { tableLiteral: props.table } : {}),
+    };
     if (fw === 'ci3' && /^application\/controllers\//.test(rel)) info.ci3Seg = rel.replace(/^application\/controllers\//, '').replace(/\.php$/, '').toLowerCase();
-    if (fw === 'ci4' && /^app\/controllers\//i.test(rel)) info.ci4 = true;
+    if (fw === 'ci4' && /^app\/controllers\//i.test(rel)) {
+      info.ci4 = true;
+      info.ci4Seg = rel.replace(/^app\/controllers\//i, '').replace(/\.php$/, '').split('/').map((x) => x.charAt(0).toLowerCase() + x.slice(1)).join('/');
+    }
     const key = c.name.toLowerCase();
     st.classes.set(key, [...(st.classes.get(key) ?? []), info]);
     // CI3: 클래스 어디서든 load->model 로 붙인 별칭을 먼저 모은다
@@ -1292,7 +1399,10 @@ function analyzeClassFile(f: FileInfo, t: PT[], ctx: Ctx, st: PhpState, fw: Fram
         const bc: BodyCtx = { f, ctx, st, lineOf, method: m, cls: { name: c.name, fields }, fw };
         analyzeBody(t, fn.bodyOpen + 1, fn.bodyClose, bc, pp.types);
         const rel2 = relationsOf(t, fn);
-        if (rel2) info.relations.set(fn.name, rel2);
+        if (rel2) {
+          info.relations.set(fn.name, rel2.target);
+          if (rel2.many) info.pivots.set(fn.name, rel2.table ?? null);
+        }
       }
       unit.methods.push(m);
       if (m.views.length) st.viewLoads.push({ method: m, views: m.views });
@@ -1384,6 +1494,8 @@ function collectFreeCalls(t: PT[], a: number, b: number, m: MethodUnit, lineOf: 
   }
 }
 
+const DB_DRIVER: Record<string, string> = { mysql: 'MySQL', mariadb: 'MariaDB', pgsql: 'PostgreSQL', sqlite: 'SQLite', sqlsrv: 'SQL Server', oracle: 'Oracle', oci8: 'Oracle' };
+
 export const phpAnalyzer: Analyzer = {
   name: 'php',
   order: 25,
@@ -1394,6 +1506,21 @@ export const phpAnalyzer: Analyzer = {
     // 프레임워크 코어·부트스트랩·테스트는 건너뜀
     if (fw === 'ci3' && /^system\//.test(rel)) return;
     if (fw === 'ci4' && /^(system|writable|tests)\//.test(rel)) return;
+    // CI4 app/Config/Routing.php · Feature.php: 자동 라우팅
+    if (fw === 'ci4' && /^app\/Config\/(Routing|Feature)\.php$/i.test(rel)) {
+      const o = st.ci4Opts.get(root) ?? {};
+      if (/\$autoRoute\s*=\s*true/.test(text)) st.ci4Auto.add(root);
+      if (/\$autoRoutesImproved\s*=\s*true/.test(text)) o.improved = true;
+      if (/\$autoRoutesImproved\s*=\s*false/.test(text)) o.improved = false;
+      if (/\$translateUriToCamelCase\s*=\s*true/i.test(text)) o.camel = true;
+      st.ci4Opts.set(root, o);
+    }
+    // Laravel config/database.php: 'default' => env('DB_CONNECTION', 'mysql')
+    if ((fw === 'laravel' || fw === 'plain') && /(^|\/)database\.php$/i.test(rel)) {
+      const m = /['"]default['"]\s*=>\s*env\(\s*['"]DB_CONNECTION['"]\s*,\s*['"](\w+)['"]/.exec(text);
+      const db = m ? DB_DRIVER[m[1].toLowerCase()] : undefined;
+      if (db && m) ctx.hit('DB', db, f.id, makeLineIndex(text)(m.index), 1);
+    }
     if (fw === 'laravel' && (/^(bootstrap|config|storage|tests|lang|resources\/lang)\//.test(rel) || /^public\/index\.php$/.test(rel) || rel === 'server.php')) return;
     if (fw === 'ci4' && /^public\/index\.php$/.test(rel)) return;
     const lineOf = makeLineIndex(text);
@@ -1520,13 +1647,25 @@ function finishPhp(ctx: Ctx, st: PhpState): void {
   for (const list of st.classes.values()) {
     for (const info of list) {
       if (info.ci3Seg !== undefined || (info.ci4 && st.ci4Auto.has(info.root))) {
-        const seg = info.ci3Seg ?? info.unit.name.toLowerCase();
+        const seg = info.ci3Seg ?? info.ci4Seg ?? info.unit.name.toLowerCase();
+        const opts = st.ci4Opts.get(info.root) ?? {};
+        // CI4 개선된 자동 라우팅: getView() → GET /ctrl/view, postSave() → POST /ctrl/save (4.5 부터 기본)
+        const verbMethods = info.ci4 && info.unit.methods.filter((m) => /^(get|post|put|patch|delete)[A-Z]/.test(m.name)).length > 0;
+        const improved = info.ci4 && (opts.improved ?? verbMethods);
         for (const m of info.unit.methods) {
           const vis = info.visibility.get(m) ?? 'public';
-          if (vis !== 'public' || m.name.startsWith('_')) continue;
-          const name = m.name.toLowerCase();
+          if (vis !== 'public' || m.name.startsWith('_') || m.name === '__construct' || m.name === 'initController') continue;
+          let verb = '*';
+          let name = m.name.toLowerCase();
+          if (improved) {
+            const vm = /^(get|post|put|patch|delete)([A-Z]\w*)$/.exec(m.name);
+            if (!vm) continue;
+            verb = vm[1].toUpperCase();
+            const rest = vm[2];
+            name = opts.camel ? rest.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() : rest.charAt(0).toLowerCase() + rest.slice(1);
+          }
           const add = (p: string) => {
-            if (!m.routes.some((r) => r.path === p)) m.routes.push({ method: '*', path: p, line: m.line });
+            if (!m.routes.some((r) => r.path === p && r.method === verb)) m.routes.push({ method: verb, path: p, line: m.line });
           };
           if (name === 'index') add(`/${seg}`);
           add(`/${seg}/${name}`);
@@ -1562,6 +1701,61 @@ function finishPhp(ctx: Ctx, st: PhpState): void {
     for (const meth of r.methods) if (!m.routes.some((x) => x.path === path)) m.routes.push({ method: meth, path, line: m.line });
   }
 
+  // 관계 메서드를 정의한 클래스 (자신 → 트레이트 → 부모)
+  function relationOwner(info: ClassInfo, rel: string, depth = 0): ClassInfo | undefined {
+    if (info.relations.has(rel)) return info;
+    if (depth > 5) return undefined;
+    for (const tr of info.traits) {
+      const ti = findClass(st, tr);
+      const r = ti && ti !== info ? relationOwner(ti, rel, depth + 1) : undefined;
+      if (r) return r;
+    }
+    const p = info.ext ? findClass(st, info.ext) : undefined;
+    return p && p !== info ? relationOwner(p, rel, depth + 1) : undefined;
+  }
+  // 메서드를 정의한 클래스 (자신 → 트레이트 → 부모)
+  function methodOwner(info: ClassInfo, name: string, depth = 0, seen = new Set<ClassInfo>()): ClassInfo | undefined {
+    if (seen.has(info) || depth > 6) return undefined;
+    seen.add(info);
+    const ln = name.toLowerCase();
+    if (info.unit.methods.some((x) => x.name.toLowerCase() === ln)) return info;
+    for (const tr of info.traits) {
+      const ti = findClass(st, tr);
+      const r = ti ? methodOwner(ti, name, depth + 1, seen) : undefined;
+      if (r) return r;
+    }
+    const p = info.ext ? findClass(st, info.ext) : undefined;
+    return p ? methodOwner(p, name, depth + 1, seen) : undefined;
+  }
+  // '@rel:User:articles' (관계로 만든 인스턴스) → 대상 모델 이름
+  const relTarget = (name: string, depth = 0): string | undefined => {
+    const m = /^@rel:(.+):(\w+)$/.exec(name);
+    if (!m) return name;
+    const ownerName = depth < 4 ? relTarget(m[1], depth + 1) : undefined;
+    const owner = ownerName ? findClass(st, ownerName) : undefined;
+    const ri = owner ? relationOwner(owner, m[2]) : undefined;
+    return ri?.relations.get(m[2]);
+  };
+  for (const op of st.modelOps) if (op.model.startsWith('@rel:')) op.model = relTarget(op.model) ?? '';
+  // 트레이트·부모 클래스에 있는 메서드 호출은 그 유닛 fqn 으로 (연결 단계가 그대로 따라감)
+  for (const list of st.classes.values()) {
+    for (const info of list) {
+      for (const meth of info.unit.methods) {
+        for (const c of meth.calls) {
+          if (c.via.startsWith('@rel:')) c.via = relTarget(c.via) ?? '';
+          const self = c.via.startsWith('this.');
+          const typeName = self ? info.unit.name : info.unit.fields[c.via] ?? info.unit.fields[c.via.toLowerCase()] ?? c.via;
+          const target = findClass(st, typeName);
+          if (!target || target.unit.methods.some((x) => x.name.toLowerCase() === c.method.toLowerCase())) continue;
+          const owner = methodOwner(target, c.method);
+          if (!owner?.unit.fqn || owner === target) continue;
+          c.via = `${owner.unit === info.unit ? 'this.' : ''}${owner.unit.fqn}`;
+          c.method = owner.unit.methods.find((x) => x.name.toLowerCase() === c.method.toLowerCase())?.name ?? c.method;
+        }
+      }
+    }
+  }
+
   // 모델 연산 → ORM SQL
   for (const op of st.modelOps) {
     let modelName = op.model;
@@ -1571,13 +1765,25 @@ function finishPhp(ctx: Ctx, st: PhpState): void {
       if (!t) continue;
       modelName = t;
     }
-    const info = findClass(st, modelName);
-    if (!info || info.unit.kind !== 'model') continue;
+    const info0 = findClass(st, modelName);
+    // 관계 연산은 관계를 정의한 곳(모델·트레이트·부모)에서 찾는다
+    const info = info0 && op.relations.length === 1 && op.instance && !info0.relations.has(op.relations[0]) ? relationOwner(info0, op.relations[0]) ?? info0 : info0;
+    if (!info || (info.unit.kind !== 'model' && !(op.relations.length === 1 && op.instance && info.relations.has(op.relations[0])))) continue;
     // 모델 클래스가 직접 정의한 메서드면 일반 호출(링크가 따라감)
     if (info.unit.methods.some((m) => m.name === op.ops[0]) && !op.relations.length) continue;
     const table = info.unit.table ?? modelTable(st, info);
     let tables: TableRef[] = [];
-    if (op.relations.length && op.ops.length === 1 && /^(create|createMany|save|saveMany|insert|update|delete)$/.test(op.ops[0]) && op.instance && op.relations.length === 1) {
+    if (op.pivot && op.relations.length === 1) {
+      // $post->tags()->attach() → 중간 테이블 (명시 이름 또는 두 모델 이름을 정렬해 _ 로)
+      const rel = op.relations[0];
+      const target = info.relations.get(rel);
+      const ti = target ? findClass(st, target) : undefined;
+      const explicit = info.pivots.get(rel);
+      const ownerModel = info0 && info0.unit.kind === 'model' ? info0 : info.unit.kind === 'model' ? info : undefined;
+      const pivot = explicit ?? (ti && ownerModel ? [snake(ownerModel.unit.name), snake(ti.unit.name)].sort().join('_') : null);
+      if (!info.pivots.has(rel) || !pivot) continue;
+      tables = (PIVOT_OPS[op.ops[0].toLowerCase()] ?? ['U']).map((c) => ({ name: pivot, crud: c }));
+    } else if (op.relations.length && op.ops.length === 1 && RELATION_WRITE.test(op.ops[0]) && op.instance && op.relations.length === 1) {
       // $order->items()->create()
       const target = info.relations.get(op.relations[0]);
       const ti = target ? findClass(st, target) : undefined;
