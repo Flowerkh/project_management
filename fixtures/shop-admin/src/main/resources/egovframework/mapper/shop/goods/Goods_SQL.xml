@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="goodsdao">
+
+    <!-- 상품 목록 -->
+    <select id="selectGoodsList" parameterType="GoodsVO" resultType="egovMap">
+        <![CDATA[
+        SELECT G.GOODS_NO, G.GOODS_NM, C.CATE_NM, S.STOCK_QTY FROM TB_GOODS G JOIN TB_CATEGORY C ON G.CATE_CD = C.CATE_CD LEFT JOIN TB_STOCK S ON G.GOODS_NO = S.GOODS_NO <if test="cateCd != null">WHERE G.CATE_CD = #{cateCd}</if>
+        ]]>
+    </select>
+
+    <!-- 상품 상세 -->
+    <select id="selectGoods" parameterType="GoodsVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_GOODS WHERE GOODS_NO = #{goodsNo}
+        ]]>
+    </select>
+
+    <!-- 상품 상세 -->
+    <select id="selectGoodsOptionList" parameterType="GoodsVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_GOODS_OPTION WHERE GOODS_NO = #{goodsNo}
+        ]]>
+    </select>
+
+    <!-- 상품 상세 -->
+    <select id="selectGoodsImgList" parameterType="GoodsVO" resultType="egovMap">
+        <![CDATA[
+        SELECT I.*, F.FILE_NM FROM TB_GOODS_IMG I JOIN TB_FILE F ON I.FILE_ID = F.FILE_ID WHERE I.GOODS_NO = #{goodsNo}
+        ]]>
+    </select>
+
+    <!-- 상품 등록 -->
+    <insert id="insertGoods" parameterType="GoodsVO">
+        <![CDATA[
+        INSERT INTO TB_GOODS (GOODS_NO, GOODS_NM, CATE_CD, PRICE, REG_DT) VALUES (SEQ_GOODS.NEXTVAL, #{goodsNm}, #{cateCd}, #{price}, SYSDATE)
+        ]]>
+    </insert>
+
+    <!-- 상품 등록 -->
+    <insert id="insertGoodsOption" parameterType="GoodsVO">
+        <![CDATA[
+        INSERT INTO TB_GOODS_OPTION (OPT_SN, GOODS_NO, OPT_NM, ADD_PRICE) VALUES (#{optSn}, #{goodsNo}, #{optNm}, #{addPrice})
+        ]]>
+    </insert>
+
+    <!-- 상품 등록 -->
+    <insert id="insertStock" parameterType="GoodsVO">
+        <![CDATA[
+        INSERT INTO TB_STOCK (GOODS_NO, OPT_SN, STOCK_QTY) VALUES (#{goodsNo}, #{optSn}, 0)
+        ]]>
+    </insert>
+
+    <!-- 카테고리 관리 -->
+    <select id="selectCategoryList" parameterType="GoodsVO" resultType="egovMap">
+        <![CDATA[
+        SELECT CATE_CD, UPPER_CATE_CD, CATE_NM FROM TB_CATEGORY START WITH UPPER_CATE_CD IS NULL CONNECT BY PRIOR CATE_CD = UPPER_CATE_CD
+        ]]>
+    </select>
+
+    <!-- 카테고리 관리 -->
+    <insert id="insertCategory" parameterType="GoodsVO">
+        <![CDATA[
+        INSERT INTO TB_CATEGORY (CATE_CD, UPPER_CATE_CD, CATE_NM) VALUES (#{cateCd}, #{upperCateCd}, #{cateNm})
+        ]]>
+    </insert>
+
+    <!-- 카테고리 관리 -->
+    <delete id="deleteCategory" parameterType="GoodsVO">
+        <![CDATA[
+        DELETE FROM TB_CATEGORY WHERE CATE_CD = #{cateCd}
+        ]]>
+    </delete>
+
+    <!-- 재고 현황 -->
+    <select id="selectStockList" parameterType="GoodsVO" resultType="egovMap">
+        <![CDATA[
+        SELECT S.GOODS_NO, G.GOODS_NM, S.STOCK_QTY FROM TB_STOCK S, TB_GOODS G WHERE S.GOODS_NO = G.GOODS_NO
+        ]]>
+    </select>
+
+    <!-- 재고 현황 -->
+    <update id="updateStock" parameterType="GoodsVO">
+        <![CDATA[
+        UPDATE TB_STOCK SET STOCK_QTY = #{stockQty} WHERE GOODS_NO = #{goodsNo} AND OPT_SN = #{optSn}
+        ]]>
+    </update>
+
+</mapper>

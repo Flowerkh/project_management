@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="orderdao">
+
+    <!-- 주문 목록 -->
+    <select id="selectOrderList" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT O.ORDER_NO, O.ORDER_DT, O.ORDER_STAT_CD, U.USER_NM, O.TOT_AMT FROM TB_ORDER O JOIN TB_USER U ON O.USER_ID = U.USER_ID WHERE O.ORDER_DT BETWEEN #{fromDt} AND #{toDt} AND ROWNUM &lt;= 1000
+        ]]>
+    </select>
+
+    <!-- 주문 상세 -->
+    <select id="selectOrder" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_ORDER WHERE ORDER_NO = #{orderNo}
+        ]]>
+    </select>
+
+    <!-- 주문 상세 -->
+    <select id="selectOrderItemList" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT I.*, G.GOODS_NM FROM TB_ORDER_ITEM I JOIN TB_GOODS G ON I.GOODS_NO = G.GOODS_NO WHERE I.ORDER_NO = #{orderNo}
+        ]]>
+    </select>
+
+    <!-- 주문 상세 -->
+    <select id="selectOrderDlvy" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_ORDER_DLVY WHERE ORDER_NO = #{orderNo}
+        ]]>
+    </select>
+
+    <!-- 주문 상세 -->
+    <select id="selectPay" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_PAY WHERE ORDER_NO = #{orderNo}
+        ]]>
+    </select>
+
+    <!-- 주문 상세 -->
+    <update id="updateOrderStat" parameterType="OrderVO">
+        <![CDATA[
+        UPDATE TB_ORDER SET ORDER_STAT_CD = #{orderStatCd} WHERE ORDER_NO = #{orderNo}
+        ]]>
+    </update>
+
+    <!-- 주문 상세 -->
+    <insert id="insertOrderHist" parameterType="OrderVO">
+        <![CDATA[
+        INSERT INTO TB_ORDER_HIST (HIST_SN, ORDER_NO, ORDER_STAT_CD, REG_DT) VALUES (SEQ_ORDER_HIST.NEXTVAL, #{orderNo}, #{orderStatCd}, SYSDATE)
+        ]]>
+    </insert>
+
+    <!-- 주문 상세 -->
+    <update id="updateDlvyStat" parameterType="OrderVO">
+        <![CDATA[
+        UPDATE TB_ORDER_DLVY SET DLVY_STAT_CD = #{dlvyStatCd}, INVOICE_NO = #{invoiceNo} WHERE ORDER_NO = #{orderNo}
+        ]]>
+    </update>
+
+    <!-- 배송 현황 -->
+    <select id="selectDlvyList" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT D.ORDER_NO, D.DLVY_STAT_CD, D.INVOICE_NO, O.USER_ID FROM TB_ORDER_DLVY D JOIN TB_ORDER O ON D.ORDER_NO = O.ORDER_NO
+        ]]>
+    </select>
+
+    <!-- 반품·교환 -->
+    <select id="selectClaimList" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT C.CLAIM_NO, C.ORDER_NO, C.CLAIM_TY_CD, C.CLAIM_STAT_CD FROM TB_ORDER_CLAIM C
+        ]]>
+    </select>
+
+    <!-- 반품·교환 -->
+    <insert id="insertClaim" parameterType="OrderVO">
+        <![CDATA[
+        INSERT INTO TB_ORDER_CLAIM (CLAIM_NO, ORDER_NO, CLAIM_TY_CD, CLAIM_STAT_CD) VALUES (#{claimNo}, #{orderNo}, #{claimTyCd}, 'REQ')
+        ]]>
+    </insert>
+
+    <!-- 반품·교환 -->
+    <update id="updateClaimStat" parameterType="OrderVO">
+        <![CDATA[
+        UPDATE TB_ORDER_CLAIM SET CLAIM_STAT_CD = #{claimStatCd} WHERE CLAIM_NO = #{claimNo}
+        ]]>
+    </update>
+
+    <!-- 주문 이력 -->
+    <select id="selectOrderHistList" parameterType="OrderVO" resultType="egovMap">
+        <![CDATA[
+        SELECT HIST_SN, ORDER_STAT_CD, REG_DT FROM TB_ORDER_HIST WHERE ORDER_NO = #{orderNo} ORDER BY HIST_SN DESC
+        ]]>
+    </select>
+
+</mapper>

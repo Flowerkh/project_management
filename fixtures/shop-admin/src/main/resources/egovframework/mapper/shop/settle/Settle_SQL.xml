@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="settledao">
+
+    <!-- 정산 목록 -->
+    <select id="selectSettleList" parameterType="SettleVO" resultType="egovMap">
+        <![CDATA[
+        SELECT S.SETTLE_NO, S.SETTLE_DT, S.SETTLE_AMT, SL.SELLER_NM FROM TB_SETTLE S JOIN TB_SELLER SL ON S.SELLER_ID = SL.SELLER_ID
+        ]]>
+    </select>
+
+    <!-- 정산 상세 -->
+    <select id="selectSettle" parameterType="SettleVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_SETTLE WHERE SETTLE_NO = #{settleNo}
+        ]]>
+    </select>
+
+    <!-- 정산 상세 -->
+    <select id="selectSettleItemList" parameterType="SettleVO" resultType="egovMap">
+        <![CDATA[
+        SELECT I.*, O.ORDER_DT FROM TB_SETTLE_ITEM I JOIN TB_ORDER O ON I.ORDER_NO = O.ORDER_NO WHERE I.SETTLE_NO = #{settleNo}
+        ]]>
+    </select>
+
+    <!-- 정산 상세 -->
+    <update id="updateSettleStat" parameterType="SettleVO">
+        <![CDATA[
+        UPDATE TB_SETTLE SET SETTLE_STAT_CD = #{settleStatCd} WHERE SETTLE_NO = #{settleNo}
+        ]]>
+    </update>
+
+    <!-- 판매자 관리 -->
+    <select id="selectSellerList" parameterType="SettleVO" resultType="egovMap">
+        <![CDATA[
+        SELECT SELLER_ID, SELLER_NM, BIZ_NO FROM TB_SELLER
+        ]]>
+    </select>
+
+    <!-- 판매자 관리 -->
+    <insert id="insertSeller" parameterType="SettleVO">
+        <![CDATA[
+        INSERT INTO TB_SELLER (SELLER_ID, SELLER_NM, BIZ_NO) VALUES (#{sellerId}, #{sellerNm}, #{bizNo})
+        ]]>
+    </insert>
+
+    <!-- 월 매출 통계 -->
+    <select id="selectSalesMonthly" parameterType="SettleVO" resultType="egovMap">
+        <![CDATA[
+        SELECT YM, SELLER_ID, SALES_AMT FROM TB_SALES_MONTHLY WHERE YM = #{ym}
+        ]]>
+    </select>
+
+</mapper>

@@ -1,0 +1,6 @@
+#!/bin/sh
+# 재고 동기화: 외부 창고 재고를 반영
+sqlplus -s $DB_USER/$DB_PASS@SHOP <<EOF
+UPDATE TB_STOCK S SET STOCK_QTY = (SELECT QTY FROM WMS_STOCK@WMS W WHERE W.GOODS_NO = S.GOODS_NO);
+COMMIT;
+EOF

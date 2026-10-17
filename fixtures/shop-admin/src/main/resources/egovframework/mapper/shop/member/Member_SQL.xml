@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="egovframework.shop.member.service.impl.MemberMapper">
+
+    <!-- 회원 목록 -->
+    <select id="selectMemberList" parameterType="MemberVO" resultType="egovMap">
+        <![CDATA[
+        SELECT U.USER_ID, U.USER_NM, U.GRADE_CD, G.GRADE_NM FROM TB_USER U LEFT JOIN TB_USER_GRADE G ON U.GRADE_CD = G.GRADE_CD WHERE U.STAT_CD = #{statCd} ORDER BY U.JOIN_DT DESC
+        ]]>
+    </select>
+
+    <!-- 회원 상세 -->
+    <select id="selectMember" parameterType="MemberVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_USER WHERE USER_ID = #{userId}
+        ]]>
+    </select>
+
+    <!-- 회원 상세 -->
+    <select id="selectMemberAddrList" parameterType="MemberVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM TB_USER_ADDR WHERE USER_ID = #{userId}
+        ]]>
+    </select>
+
+    <!-- 회원 상세 -->
+    <update id="updateMemberGrade" parameterType="MemberVO">
+        <![CDATA[
+        UPDATE TB_USER SET GRADE_CD = #{gradeCd} WHERE USER_ID = #{userId}
+        ]]>
+    </update>
+
+    <!-- 회원 등급 관리 -->
+    <select id="selectGradeList" parameterType="MemberVO" resultType="egovMap">
+        <![CDATA[
+        SELECT GRADE_CD, GRADE_NM, DC_RATE FROM TB_USER_GRADE
+        ]]>
+    </select>
+
+    <!-- 회원 등급 관리 -->
+    <update id="updateGrade" parameterType="MemberVO">
+        <![CDATA[
+        UPDATE TB_USER_GRADE SET DC_RATE = #{dcRate} WHERE GRADE_CD = #{gradeCd}
+        ]]>
+    </update>
+
+    <!-- 휴면 회원 목록 -->
+    <select id="selectDormantList" parameterType="MemberVO" resultType="egovMap">
+        <![CDATA[
+        SELECT D.USER_ID, D.USER_NM, D.DORMANT_DT FROM TB_USER_DORMANT D ORDER BY D.DORMANT_DT DESC
+        ]]>
+    </select>
+
+</mapper>

@@ -1,0 +1,417 @@
+{
+ "tables": [
+  {
+   "name": "TB_USER",
+   "comment": "회원 기본정보",
+   "columns": 8
+  },
+  {
+   "name": "TB_USER_DORMANT",
+   "comment": "휴면 회원",
+   "columns": 3
+  },
+  {
+   "name": "TB_USER_GRADE",
+   "comment": "회원 등급",
+   "columns": 3
+  },
+  {
+   "name": "TB_USER_ADDR",
+   "comment": "회원 배송지",
+   "columns": 4
+  },
+  {
+   "name": "TB_GOODS",
+   "comment": "상품 기본정보",
+   "columns": 7
+  },
+  {
+   "name": "TB_GOODS_OPTION",
+   "comment": "상품 옵션",
+   "columns": 4
+  },
+  {
+   "name": "TB_GOODS_IMG",
+   "comment": "상품 이미지",
+   "columns": 3
+  },
+  {
+   "name": "TB_CATEGORY",
+   "comment": "상품 카테고리",
+   "columns": 3
+  },
+  {
+   "name": "TB_STOCK",
+   "comment": "상품 재고",
+   "columns": 3
+  },
+  {
+   "name": "TB_ORDER",
+   "comment": "주문 기본정보",
+   "columns": 6
+  },
+  {
+   "name": "TB_ORDER_ITEM",
+   "comment": "주문 상품",
+   "columns": 5
+  },
+  {
+   "name": "TB_ORDER_DLVY",
+   "comment": "주문 배송",
+   "columns": 4
+  },
+  {
+   "name": "TB_ORDER_HIST",
+   "comment": "주문 상태 이력",
+   "columns": 4
+  },
+  {
+   "name": "TB_ORDER_CLAIM",
+   "comment": "주문 클레임(반품·교환)",
+   "columns": 4
+  },
+  {
+   "name": "TB_PAY",
+   "comment": "결제",
+   "columns": 4
+  },
+  {
+   "name": "TB_SETTLE",
+   "comment": "판매자 정산",
+   "columns": 5
+  },
+  {
+   "name": "TB_SETTLE_ITEM",
+   "comment": "정산 상세",
+   "columns": 3
+  },
+  {
+   "name": "TB_SELLER",
+   "comment": "판매자",
+   "columns": 3
+  },
+  {
+   "name": "TB_SALES_MONTHLY",
+   "comment": "월 매출 집계",
+   "columns": 3
+  },
+  {
+   "name": "TB_MENU",
+   "comment": "관리자 메뉴",
+   "columns": 5
+  },
+  {
+   "name": "TB_CODE",
+   "comment": "공통 코드",
+   "columns": 2
+  },
+  {
+   "name": "TB_CODE_DETAIL",
+   "comment": "공통 상세 코드",
+   "columns": 4
+  },
+  {
+   "name": "TB_ADMIN",
+   "comment": "관리자 계정",
+   "columns": 4
+  },
+  {
+   "name": "TB_AUTH",
+   "comment": "권한",
+   "columns": 2
+  },
+  {
+   "name": "TB_LOGIN_LOG",
+   "comment": "로그인 로그",
+   "columns": 4
+  },
+  {
+   "name": "TB_FILE",
+   "comment": "첨부 파일",
+   "columns": 3
+  },
+  {
+   "name": "TB_COUPON",
+   "comment": "쿠폰",
+   "columns": 3
+  }
+ ],
+ "screens": [
+  {
+   "url": "/member/memberList.do",
+   "title": "회원 목록",
+   "kind": "list"
+  },
+  {
+   "url": "/member/memberDetail.do",
+   "title": "회원 상세",
+   "kind": "detail"
+  },
+  {
+   "url": "/member/memberGradeList.do",
+   "title": "회원 등급 관리",
+   "kind": "list"
+  },
+  {
+   "url": "/member/dormantList.do",
+   "title": "휴면 회원 목록",
+   "kind": "list"
+  },
+  {
+   "url": "/goods/goodsList.do",
+   "title": "상품 목록",
+   "kind": "list"
+  },
+  {
+   "url": "/goods/goodsDetail.do",
+   "title": "상품 상세",
+   "kind": "detail"
+  },
+  {
+   "url": "/goods/goodsRegist.do",
+   "title": "상품 등록",
+   "kind": "regist"
+  },
+  {
+   "url": "/goods/categoryList.do",
+   "title": "카테고리 관리",
+   "kind": "list"
+  },
+  {
+   "url": "/goods/stockList.do",
+   "title": "재고 현황",
+   "kind": "list"
+  },
+  {
+   "url": "/order/orderList.do",
+   "title": "주문 목록",
+   "kind": "list"
+  },
+  {
+   "url": "/order/orderDetail.do",
+   "title": "주문 상세",
+   "kind": "detail"
+  },
+  {
+   "url": "/order/dlvyList.do",
+   "title": "배송 현황",
+   "kind": "list"
+  },
+  {
+   "url": "/order/claimList.do",
+   "title": "반품·교환",
+   "kind": "list"
+  },
+  {
+   "url": "/order/orderHistPopup.do",
+   "title": "주문 이력",
+   "kind": "popup"
+  },
+  {
+   "url": "/settle/settleList.do",
+   "title": "정산 목록",
+   "kind": "list"
+  },
+  {
+   "url": "/settle/settleDetail.do",
+   "title": "정산 상세",
+   "kind": "detail"
+  },
+  {
+   "url": "/settle/sellerList.do",
+   "title": "판매자 관리",
+   "kind": "list"
+  },
+  {
+   "url": "/settle/salesStats.do",
+   "title": "월 매출 통계",
+   "kind": "list"
+  },
+  {
+   "url": "/system/menuList.do",
+   "title": "메뉴 관리",
+   "kind": "list"
+  },
+  {
+   "url": "/system/codeList.do",
+   "title": "공통코드 관리",
+   "kind": "list"
+  },
+  {
+   "url": "/system/adminList.do",
+   "title": "관리자 계정",
+   "kind": "list"
+  },
+  {
+   "url": "/system/loginLogList.do",
+   "title": "접속 로그",
+   "kind": "list"
+  },
+  {
+   "url": "/system/dynamicReport.do",
+   "title": "동적 조회",
+   "kind": "list"
+  }
+ ],
+ "menus": [
+  {
+   "id": "M0100",
+   "name": "회원관리",
+   "parent": null
+  },
+  {
+   "id": "M0101",
+   "name": "회원 목록",
+   "parent": "M0100",
+   "url": "/member/memberList.do"
+  },
+  {
+   "id": "M0102",
+   "name": "회원 등급 관리",
+   "parent": "M0100",
+   "url": "/member/memberGradeList.do"
+  },
+  {
+   "id": "M0103",
+   "name": "휴면 회원 목록",
+   "parent": "M0100",
+   "url": "/member/dormantList.do"
+  },
+  {
+   "id": "M0200",
+   "name": "상품관리",
+   "parent": null
+  },
+  {
+   "id": "M0201",
+   "name": "상품 목록",
+   "parent": "M0200",
+   "url": "/goods/goodsList.do"
+  },
+  {
+   "id": "M0202",
+   "name": "상품 등록",
+   "parent": "M0200",
+   "url": "/goods/goodsRegist.do"
+  },
+  {
+   "id": "M0203",
+   "name": "카테고리 관리",
+   "parent": "M0200",
+   "url": "/goods/categoryList.do"
+  },
+  {
+   "id": "M0204",
+   "name": "재고 현황",
+   "parent": "M0200",
+   "url": "/goods/stockList.do"
+  },
+  {
+   "id": "M0300",
+   "name": "주문관리",
+   "parent": null
+  },
+  {
+   "id": "M0301",
+   "name": "주문 목록",
+   "parent": "M0300",
+   "url": "/order/orderList.do"
+  },
+  {
+   "id": "M0302",
+   "name": "배송 현황",
+   "parent": "M0300",
+   "url": "/order/dlvyList.do"
+  },
+  {
+   "id": "M0303",
+   "name": "반품·교환",
+   "parent": "M0300",
+   "url": "/order/claimList.do"
+  },
+  {
+   "id": "M0400",
+   "name": "정산관리",
+   "parent": null
+  },
+  {
+   "id": "M0401",
+   "name": "정산 목록",
+   "parent": "M0400",
+   "url": "/settle/settleList.do"
+  },
+  {
+   "id": "M0402",
+   "name": "판매자 관리",
+   "parent": "M0400",
+   "url": "/settle/sellerList.do"
+  },
+  {
+   "id": "M0403",
+   "name": "월 매출 통계",
+   "parent": "M0400",
+   "url": "/settle/salesStats.do"
+  },
+  {
+   "id": "M0500",
+   "name": "시스템관리",
+   "parent": null
+  },
+  {
+   "id": "M0501",
+   "name": "메뉴 관리",
+   "parent": "M0500",
+   "url": "/system/menuList.do"
+  },
+  {
+   "id": "M0502",
+   "name": "공통코드 관리",
+   "parent": "M0500",
+   "url": "/system/codeList.do"
+  },
+  {
+   "id": "M0503",
+   "name": "관리자 계정",
+   "parent": "M0500",
+   "url": "/system/adminList.do"
+  },
+  {
+   "id": "M0504",
+   "name": "접속 로그",
+   "parent": "M0500",
+   "url": "/system/loginLogList.do"
+  },
+  {
+   "id": "M0505",
+   "name": "동적 조회",
+   "parent": "M0500",
+   "url": "/system/dynamicReport.do"
+  }
+ ],
+ "batches": [
+  {
+   "name": "일 정산",
+   "schedule": "매일 02:00"
+  },
+  {
+   "name": "휴면 회원 전환",
+   "schedule": "매일 04:30"
+  },
+  {
+   "name": "로그 정리",
+   "schedule": "매주 일 05:00"
+  },
+  {
+   "name": "재고 동기화",
+   "schedule": null
+  },
+  {
+   "name": "월 매출 집계",
+   "schedule": "매월 1일 01:00"
+  },
+  {
+   "name": "주문 자동 확정",
+   "schedule": "매일 03:00"
+  }
+ ]
+}

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="sysdao">
+
+    <!-- 메뉴 관리 -->
+    <select id="selectMenuList" parameterType="SysVO" resultType="egovMap">
+        <![CDATA[
+        SELECT MENU_ID, UPPER_MENU_ID, MENU_NM, MENU_URL FROM TB_MENU ORDER BY MENU_ORDR
+        ]]>
+    </select>
+
+    <!-- 메뉴 관리 -->
+    <insert id="insertMenu" parameterType="SysVO">
+        <![CDATA[
+        INSERT INTO TB_MENU (MENU_ID, UPPER_MENU_ID, MENU_NM, MENU_URL, MENU_ORDR) VALUES (#{menuId}, #{upperMenuId}, #{menuNm}, #{menuUrl}, #{menuOrdr})
+        ]]>
+    </insert>
+
+    <!-- 메뉴 관리 -->
+    <delete id="deleteMenu" parameterType="SysVO">
+        <![CDATA[
+        DELETE FROM TB_MENU WHERE MENU_ID = #{menuId}
+        ]]>
+    </delete>
+
+    <!-- 공통코드 관리 -->
+    <select id="selectCodeList" parameterType="SysVO" resultType="egovMap">
+        <![CDATA[
+        SELECT C.CODE_ID, C.CODE_NM, D.CODE, D.CODE_NM FROM TB_CODE C JOIN TB_CODE_DETAIL D ON C.CODE_ID = D.CODE_ID
+        ]]>
+    </select>
+
+    <!-- 공통코드 관리 -->
+    <update id="mergeCodeDetail" parameterType="SysVO">
+        <![CDATA[
+        MERGE INTO TB_CODE_DETAIL T USING (SELECT #{codeId} CODE_ID, #{code} CODE FROM DUAL) S ON (T.CODE_ID = S.CODE_ID AND T.CODE = S.CODE) WHEN MATCHED THEN UPDATE SET T.CODE_NM = #{codeNm} WHEN NOT MATCHED THEN INSERT (CODE_ID, CODE, CODE_NM) VALUES (S.CODE_ID, S.CODE, #{codeNm})
+        ]]>
+    </update>
+
+    <!-- 관리자 계정 -->
+    <select id="selectAdminList" parameterType="SysVO" resultType="egovMap">
+        <![CDATA[
+        SELECT A.ADMIN_ID, A.ADMIN_NM, H.AUTH_NM FROM TB_ADMIN A JOIN TB_AUTH H ON A.AUTH_CD = H.AUTH_CD
+        ]]>
+    </select>
+
+    <!-- 관리자 계정 -->
+    <update id="updateAdminAuth" parameterType="SysVO">
+        <![CDATA[
+        UPDATE TB_ADMIN SET AUTH_CD = #{authCd} WHERE ADMIN_ID = #{adminId}
+        ]]>
+    </update>
+
+    <!-- 접속 로그 -->
+    <select id="selectLoginLogList" parameterType="SysVO" resultType="egovMap">
+        <![CDATA[
+        SELECT LOG_SN, ADMIN_ID, LOGIN_DT, IP FROM TB_LOGIN_LOG WHERE LOGIN_DT &gt;= #{fromDt} ORDER BY LOG_SN DESC
+        ]]>
+    </select>
+
+    <!-- 동적 조회 -->
+    <select id="selectDynamic" parameterType="SysVO" resultType="egovMap">
+        <![CDATA[
+        SELECT * FROM ${tableName} WHERE 1=1
+        ]]>
+    </select>
+
+</mapper>

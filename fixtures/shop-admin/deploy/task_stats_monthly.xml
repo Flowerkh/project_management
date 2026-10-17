@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>월 매출 집계</Description></RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2024-01-01T01:00:00</StartBoundary>
+      <ScheduleByMonth><DaysOfMonth><Day>1</Day></DaysOfMonth></ScheduleByMonth>
+    </CalendarTrigger>
+  </Triggers>
+  <Actions><Exec><Command>D:\shop\batch\stats_monthly.bat</Command></Exec></Actions>
+</Task>
