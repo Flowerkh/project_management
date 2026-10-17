@@ -48,6 +48,8 @@ const GROUP_WORDS: Record<string, string> = {
 
 export function groupLabel(group: string, menuName?: string): string {
   const w = group.replace(/^\//, '').split('/')[0].toLowerCase();
+  if (group === '/' || group === '') return '최상위';
+  if (menuName === '/' || menuName === group) menuName = undefined;
   if (menuName) return menuName.replace(/\s*(관리|메뉴)$/, '') || menuName;
   return GROUP_WORDS[w] ?? '';
 }

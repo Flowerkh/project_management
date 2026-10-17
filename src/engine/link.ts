@@ -816,7 +816,7 @@ function buildMenus(
     }
     for (const [g, list] of [...groups.entries()].sort()) {
       const gid = id();
-      const label = translate(g.replace(/^\//, '')).text || g;
+      const label = translate(g.replace(/^\//, '')).text || (g === '/' ? '최상위' : g);
       out.push({ id: gid, name: label, url: g, depth: 0, screens: [], source: 'url-guess', estimated: true, tables: [] });
       const byItemUrl = new Map<string, MenuResult>();
       for (const s of list) {
