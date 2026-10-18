@@ -121,7 +121,11 @@ async function main() {
     PA_FAKE_SCENARIO: path.join(work, 'scenario.json'),
     PA_FAKE_DELAY: '1',
   };
-  const app = await electron.launch({ executablePath: require(path.join(ROOT, 'desktop/node_modules/electron')), args: [appDir, '--no-sandbox', `--user-data-dir=${ud}`], cwd: appDir, env });
+  // appDir가 실행 파일이면 패키지한 앱(electron-builder --linux dir 결과 등)을 그대로 띄운다
+  const packaged = fs.statSync(appDir).isFile();
+  const app = packaged
+    ? await electron.launch({ executablePath: appDir, args: ['--no-sandbox', `--user-data-dir=${ud}`], cwd: path.dirname(appDir), env })
+    : await electron.launch({ executablePath: require(path.join(ROOT, 'desktop/node_modules/electron')), args: [appDir, '--no-sandbox', `--user-data-dir=${ud}`], cwd: appDir, env });
   await app.evaluate(({ dialog }, f) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [f] });
   }, proj);
