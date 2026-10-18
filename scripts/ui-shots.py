@@ -25,6 +25,14 @@ SHOTS = {
     'settings': '?mock=1&modal=settings',
     'viewer': '?mock=1&view=screen:S022',
     'search': '?mock=1',
+    # 데스크톱 기능 (가짜 메인 프로세스)
+    'desk-home': '?mock=1&desk&phase=home',
+    'desk-screen': '?mock=1&desk&view=screen:S022',
+    'desk-chat': '?mock=1&desk&chat&view=screen:S022',
+    'desk-project': '?mock=1&desk&dmodal=project',
+    'desk-claude': '?mock=1&desk&dmodal=claude',
+    'desk-changes': '?mock=1&desk&view=changes:W1',
+    'desk-history': '?mock=1&desk&view=history',
 }
 
 CHECK_JS = r"""

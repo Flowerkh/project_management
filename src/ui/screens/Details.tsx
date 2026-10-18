@@ -1,4 +1,5 @@
 // 항목 상세: 화면(SCR-05) · 테이블(SCR-06) · 메뉴(SCR-07) · 배치(SCR-13)
+import { AskClaude } from '../desktop/AskClaude';
 import { useMemo, useState } from 'preact/hooks';
 import type { Crud, FlowStep, Layer } from '../../engine/types';
 import { BatchLink, Card, ConfTag, Crumb, CrudCells, CrudMini, EvidenceLine, FileCell, FileChip, MenuLink, ScreenLink, TableLink, Tag } from '../components/common';
@@ -198,6 +199,7 @@ export function ScreenDetail(props: { id: string }) {
             )}
           </div>
         </div>
+        <AskClaude target={{ kind: 'screen', id: props.id }} />
       </div>
       <RoleCard role={s.role} confidence={s.confidence} evidenceCount={s.evidence.length}>
         <EvidenceLine items={s.evidence} />
@@ -343,6 +345,7 @@ export function TableDetail(props: { id: string }) {
             <span>함께 쓰는 테이블 {t.joinsWith.length}개</span>
           </div>
         </div>
+        <AskClaude target={{ kind: 'table', id: props.id }} />
       </div>
       <RoleCard role={t.role} confidence={t.roleConfidence}>
         {t.ddl && <EvidenceLine items={[{ ...t.ddl, text: t.comment ? `DDL COMMENT '${t.comment}'` : 'CREATE TABLE' }]} />}
@@ -545,6 +548,7 @@ export function MenuDetail(props: { id: string }) {
             <span>사용 테이블 {tables.length}개</span>
           </div>
         </div>
+        <AskClaude target={{ kind: 'menu', id: props.id }} />
       </div>
       <RoleCard role={role} confidence={m.estimated ? '낮음' : '보통'} sub={kids.length ? `하위 메뉴 ${kids.length}개의 역할을 묶어 생성` : undefined} />
       <Card title={kids.length ? '하위 메뉴 · 연결 화면' : '연결 화면'} count={kids.length || screens.length} sub="메뉴 화면에서 여는 팝업·하위 화면 포함">
@@ -693,6 +697,7 @@ export function BatchDetail(props: { id: string }) {
             소스 보기
           </button>
         )}
+        <AskClaude target={{ kind: 'batch', id: props.id }} />
       </div>
       {!b.schedule && (
         <div class="banner warn">

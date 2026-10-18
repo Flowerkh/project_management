@@ -4,3 +4,5 @@ release/
 fixtures/ext/
 desktop/node_modules/
 desktop/app/
+desktop/main.mjs
+desktop/preload.cjs

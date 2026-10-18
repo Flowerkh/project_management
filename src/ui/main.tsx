@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import type { LoadedFolder } from '../platform/types';
 import { App, type Initial } from './app';
+import { installDeskMock, MOCK_ROOT } from './desktop/mock/index';
 import { makeMock } from './mock';
 import type { Target } from './model';
 import { newRunState } from './screens/Running';
@@ -29,6 +30,16 @@ function initialFromUrl(): Initial {
   if (view) {
     const [kind, id] = view.split(':');
     if (kind === 'table' || kind === 'screen' || kind === 'menu' || kind === 'batch') init.target = { kind, id } as Target;
+    if (kind === 'changes') init.target = { kind: 'changes', workId: id || 'W1' };
+    if (kind === 'history') init.target = { kind: 'history', ...(id ? { id } : {}) };
+  }
+  // 데스크톱 기능 미리보기: ?mock&desk[&chat][&dmodal=claude|project]
+  if (p.has('desk')) {
+    installDeskMock();
+    init.folder = { ...mockFolder(), root: MOCK_ROOT };
+    if (p.has('chat')) init.chat = true;
+    const dm = p.get('dmodal');
+    if (dm === 'claude' || dm === 'project') init.deskModal = dm;
   }
   const v = p.get('viewer');
   if (v) {

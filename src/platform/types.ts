@@ -11,6 +11,8 @@ export interface FolderFile {
 export interface LoadedFolder {
   /** 최상위 폴더 이름 */
   name: string;
+  /** PC의 절대 경로 (데스크톱 앱에서 폴더로 연 경우만. ZIP·브라우저는 없음) */
+  root?: string;
   files: FolderFile[];
   /** 읽지 못한 항목 수 (권한 등) */
   skipped?: number;

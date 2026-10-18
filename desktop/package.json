@@ -5,7 +5,7 @@
   "description": "프로젝트 분석 시스템 (프로토타입)",
   "author": "project-analyzer",
   "private": true,
-  "main": "main.cjs",
+  "main": "main.mjs",
   "build": {
     "appId": "local.project-analyzer",
     "productName": "ProjectAnalyzer",
@@ -13,7 +13,7 @@
       "output": "../release"
     },
     "files": [
-      "main.cjs",
+      "main.mjs",
       "preload.cjs",
       "app/**/*"
     ],
@@ -39,11 +39,13 @@
         "to": "README.txt"
       }
     ],
-    "compression": "maximum"
+    "compression": "maximum",
+    "npmRebuild": false
   },
   "devDependencies": {
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
     "playwright-core": "^1.49.1"
-  }
+  },
+  "dependencies": {}
 }

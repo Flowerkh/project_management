@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import type { AnalysisResult } from '../../engine/types';
 import { fmtNum, langColor } from '../format';
@@ -18,6 +19,10 @@ export function Header(props: {
   onSettings: () => void;
   onHome: () => void;
   onOpenFile: (fileId: string, line?: number) => void;
+  /** 데스크톱 앱: [이력]·[Claude] 버튼 (Run과 설정 사이) */
+  extras?: ComponentChildren;
+  /** 데스크톱 앱: 프로젝트 이름을 누르면 프로젝트 연결(POP-04) */
+  onProjectChip?: () => void;
 }) {
   const r = props.result;
   const langs = r ? r.languages.filter((l) => l.name !== 'Other').slice(0, 3) : [];
@@ -48,12 +53,19 @@ export function Header(props: {
         <Logo />
         <span class="brand-name">프로젝트 분석 시스템</span>
       </button>
-      {props.projectName && (
-        <span class="proj-chip" title={props.projectName}>
-          <Icon name="folder" size={14} color="var(--icon)" />
-          <span class="ellipsis">{props.projectName}</span>
-        </span>
-      )}
+      {props.projectName &&
+        (props.onProjectChip ? (
+          <button type="button" class="proj-chip click" title={`${props.projectName} · 프로젝트 연결(형상관리·DB)`} onClick={props.onProjectChip}>
+            <Icon name="folder" size={14} color="var(--icon)" />
+            <span class="ellipsis">{props.projectName}</span>
+            <Icon name="chev_down" size={13} color="var(--muted)" />
+          </button>
+        ) : (
+          <span class="proj-chip" title={props.projectName}>
+            <Icon name="folder" size={14} color="var(--icon)" />
+            <span class="ellipsis">{props.projectName}</span>
+          </span>
+        ))}
       <span class="hdr-sep" />
       <div ref={wrap} class="row" style={{ gap: '4px' }}>
         <div style={{ position: 'relative' }}>
@@ -116,6 +128,7 @@ export function Header(props: {
             Run
           </button>
         )}
+        {props.extras}
         <button type="button" class="btn" onClick={props.onSettings} disabled={props.running}>
           <Icon name="gear" size={16} />
           설정

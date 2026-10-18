@@ -8,7 +8,11 @@ export type Target =
   | { kind: 'table'; id: string }
   | { kind: 'screen'; id: string }
   | { kind: 'menu'; id: string }
-  | { kind: 'batch'; id: string };
+  | { kind: 'batch'; id: string }
+  /** 데스크톱: 변경 검토(SCR-10) */
+  | { kind: 'changes'; workId: string; conversationId?: string }
+  /** 데스크톱: 작업 이력(SCR-12) */
+  | { kind: 'history'; id?: string };
 
 export interface FileUsage {
   screens: Set<string>;

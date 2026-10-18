@@ -1,4 +1,5 @@
 // SCR-01 메인(초기): 폴더 끌어다 놓기·선택, ZIP, 결과 파일 열기, 최근 프로젝트
+import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import { fmtNum, fmtShortDate } from '../format';
 import { Icon } from '../icons';
@@ -22,6 +23,8 @@ export function Home(props: {
   onOpenResult: () => void;
   onOpenRecent: (key: string) => void;
   onRemoveRecent: (key: string) => void;
+  /** 데스크톱 앱: [새 프로젝트] */
+  extraActions?: ComponentChildren;
 }) {
   const [over, setOver] = useState(false);
   return (
@@ -58,6 +61,7 @@ export function Home(props: {
             <Icon name="json" size={17} />
             결과 파일 열기
           </button>
+          {props.extraActions}
         </div>
         <span class="notice" style={{ marginTop: '12px' }}>
           <Icon name="shield" size={15} color="var(--ok)" />

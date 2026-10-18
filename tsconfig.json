@@ -15,5 +15,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["src", "scripts", "test"]
+  "include": ["src", "scripts", "test", "desktop/node_modules/electron/electron.d.ts"]
 }

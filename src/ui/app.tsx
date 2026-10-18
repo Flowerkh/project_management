@@ -4,8 +4,10 @@ import { compileExclude, decode, excludeReason } from '../engine/files';
 import { analyze } from '../engine/index';
 import type { AnalysisResult, Progress, SourceFile } from '../engine/types';
 import { pickZip } from '../platform/browser';
+import { walkFolder } from '../platform/electron';
 import { getPlatform } from '../platform/index';
 import type { FolderFile, LoadedFolder } from '../platform/types';
+import type { MenuRow } from '../shared/desktop-api';
 import { ConfirmDialog, DEFAULT_SETTINGS, type Settings, SettingsModal } from './components/Dialogs';
 import { Header } from './components/Header';
 import { ancestorsOf, Sidebar } from './components/Sidebar';
@@ -21,8 +23,13 @@ import { BatchDetail, MenuDetail, ScreenDetail, TableDetail } from './screens/De
 import { Home } from './screens/Home';
 import { newRunState, overallPct, Running, type RunState, STEP_NAMES } from './screens/Running';
 import { Summary } from './screens/Summary';
+import { getDesk } from './desktop/bridge';
+import { NewProjectView } from './desktop/claude/NewProject';
+import type { ReanalyzeResult } from './desktop/ctx';
+import { msg } from './desktop/messages';
+import { DeskCtx, useDesktopShell } from './desktop/shell';
 
-type Phase = 'home' | 'confirm' | 'running' | 'result';
+type Phase = 'home' | 'confirm' | 'running' | 'result' | 'new';
 type ModalKind = null | 'settings' | 'stop' | 'rerun' | 'needFolder';
 
 const STEP_KIND = ['수집', '감지', '추출', '연결', '역할', '결과'];
@@ -59,6 +66,9 @@ export interface Initial {
   folder?: LoadedFolder;
   runState?: RunState;
   modal?: ModalKind;
+  /** 미리보기: 데스크톱 팝업(POP-03·POP-04)·Claude 패널 */
+  deskModal?: 'claude' | 'project';
+  chat?: boolean;
 }
 
 export function App(props: { init?: Initial }) {
@@ -66,6 +76,7 @@ export function App(props: { init?: Initial }) {
   const platform = getPlatform();
   const [phase, setPhase] = useState<Phase>(init.phase ?? (init.mock ? 'result' : 'home'));
   const [folder, setFolder] = useState<LoadedFolder | null>(init.folder ?? null);
+  // 미리보기(?mock): 결과와 함께 넘긴 폴더가 있으면 그대로 쓴다
   const [projectName, setProjectName] = useState(init.folder?.name ?? init.mock?.result.project.name ?? '');
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<AnalysisResult | null>(init.mock && init.phase !== 'confirm' && init.phase !== 'running' && init.phase !== 'home' ? init.mock.result : null);
@@ -87,7 +98,13 @@ export function App(props: { init?: Initial }) {
     return s;
   });
   const [saved, setSaved] = useState(false);
+  /** 분석 중 알림 (DB 메뉴 읽기 실패 MSG-43 등) */
+  const [runNotice, setRunNotice] = useState<string | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  /** startRun이 끝나기를 기다리는 쪽 (다시 분석) */
+  const runWaiter = useRef<((r: AnalysisResult | null, err?: string) => void) | null>(null);
+  /** 다시 분석일 때 지금 본문·트리 펼침을 유지 */
+  const keepView = useRef(false);
   const runId = useRef(0);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -241,7 +258,11 @@ export function App(props: { init?: Initial }) {
       }
       textCache.current.clear();
       setResult(r);
-      if (folder?.name !== r.project.name) setFolder(null);
+      // 데스크톱: 분석했던 폴더가 그대로 있으면 다시 연결 (소스 보기·Claude·다시 분석)
+      const item = recent.find((x) => x.key === key);
+      const again = item?.root ? await walkFolder(item.root).catch(() => null) : null;
+      if (again) setFolder(again);
+      else if (folder?.name !== r.project.name) setFolder(null);
       setProjectName(r.project.name);
       setTarget({ kind: 'summary' });
       setSaved(true);
@@ -284,11 +305,16 @@ export function App(props: { init?: Initial }) {
     workerRef.current = null;
     setRs((prev) => (prev ? { ...prev, steps: prev.steps.map((s) => (s.status === 'done' ? s : { ...s, status: 'done' as const, ms: s.startedAt ? Date.now() - s.startedAt : 0 })) } : prev));
     setResult(r);
-    setTarget({ kind: 'summary' });
-    setExpanded(new Set(['cat:screen', ...(r.menus.length <= 40 ? ['cat:menu'] : [])]));
+    if (!keepView.current) {
+      setTarget({ kind: 'summary' });
+      setExpanded(new Set(['cat:screen', ...(r.menus.length <= 40 ? ['cat:menu'] : [])]));
+    }
+    keepView.current = false;
     setSaved(false);
     setPhase('result');
-    saveRecent(r).then(refreshRecent, () => undefined);
+    saveRecent(r, folder?.root ?? runFolder.current?.root).then(refreshRecent, () => undefined);
+    runWaiter.current?.(r);
+    runWaiter.current = null;
   };
 
   const fail = (msg: string, myRun: number) => {
@@ -297,6 +323,9 @@ export function App(props: { init?: Initial }) {
     workerRef.current = null;
     setError(`분석 중 문제가 생겨 중단했습니다. ${msg}`);
     setPhase('confirm');
+    keepView.current = false;
+    runWaiter.current?.(null, msg);
+    runWaiter.current = null;
   };
 
   const readAll = async (f: LoadedFolder, opts: { exclude: string[]; maxFileBytes: number }, myRun: number): Promise<SourceFile[] | null> => {
@@ -336,22 +365,52 @@ export function App(props: { init?: Initial }) {
     return out;
   };
 
-  const startRun = async () => {
-    if (!folder) {
+  const runFolder = useRef<LoadedFolder | null>(null);
+
+  const startRun = async (f: LoadedFolder | null = folder, name?: string): Promise<AnalysisResult | null> => {
+    if (!f) {
       setModal('needFolder');
-      return;
+      return null;
     }
+    const folder = f;
+    runFolder.current = f;
+    runWaiter.current?.(null, '새 분석을 시작했습니다');
+    const done = new Promise<AnalysisResult | null>((resolve) => {
+      runWaiter.current = (r) => resolve(r);
+    });
     const myRun = ++runId.current;
     const opts = { exclude: [...settings.exclude, ...unchecked], maxFileBytes: Math.round(settings.maxFileMB * 1024 * 1024) };
     setError(null);
     setViewer(null);
     setPopover(null);
-    setResult(null);
+    setRunNotice(null);
+    if (!keepView.current) setResult(null);
     setRs(newRunState());
     setPhase('running');
     const files = await readAll(folder, opts, myRun);
-    if (!files) return;
-    const engineOpts = { projectName: projectName.trim() || folder.name, exclude: opts.exclude, maxFileBytes: opts.maxFileBytes };
+    if (!files) return done;
+    // 데스크톱: 설정에서 켠 경우 메뉴 테이블을 DB에서 읽는다 (조회 계정, SELECT만). 실패하면 소스에서 찾은 메뉴로 (MSG-43)
+    let dbMenus: { table: string; rows: MenuRow[] } | undefined;
+    const desk = getDesk();
+    if (desk && folder.root) {
+      try {
+        const m = await desk.invoke('db.readMenu', folder.root);
+        if (m.enabled) {
+          if (m.error || !m.rows.length) {
+            const text = msg('MSG-43', { 테이블: m.table || '메뉴 테이블' });
+            setRunNotice(text);
+            applyProgress({ step: 1, stepName: STEP_NAMES[0], done: 1, total: 1, message: `경고: ${text}${m.error ? ` (${m.error})` : ''}` });
+          } else {
+            dbMenus = { table: m.table ?? '', rows: m.rows };
+            applyProgress({ step: 1, stepName: STEP_NAMES[0], done: 1, total: 1, message: `DB 메뉴 테이블 ${m.table ?? ''}에서 메뉴 ${fmtNum(m.rows.length)}개 읽음` });
+          }
+        }
+      } catch {
+        // DB 모듈이 없거나 설정이 없음 → 소스만으로 분석
+      }
+    }
+    if (runId.current !== myRun) return done;
+    const engineOpts = { projectName: (name ?? projectName).trim() || folder.name, exclude: opts.exclude, maxFileBytes: opts.maxFileBytes, ...(dbMenus ? { dbMenus } : {}) };
     const w = createWorker();
     const runHere = async () => {
       // 작업자를 쓸 수 없으면 화면 스레드에서 실행 (느리지만 동작)
@@ -366,7 +425,7 @@ export function App(props: { init?: Initial }) {
     };
     if (!w) {
       runHere();
-      return;
+      return done;
     }
     workerRef.current = w;
     let gotMessage = false;
@@ -394,12 +453,43 @@ export function App(props: { init?: Initial }) {
       workerRef.current = null;
       runHere();
     }
+    return done;
   };
+
+  /** 적용·되돌리기 뒤 다시 분석: 폴더를 다시 읽고 확인 창 없이 분석, 지금 본문은 그대로 둔다 */
+  const reanalyze = useCallback(async (): Promise<ReanalyzeResult> => {
+    const t0 = Date.now();
+    const before = result;
+    const root = folder?.root;
+    if (!root) return { ok: false, ms: 0, before, after: null, error: '원본 폴더가 없습니다' };
+    const f = await walkFolder(root).catch(() => null);
+    if (!f) return { ok: false, ms: Date.now() - t0, before, after: null, error: '프로젝트 폴더를 다시 읽지 못했습니다' };
+    textCache.current.clear();
+    setFolder(f);
+    keepView.current = true;
+    const after = await startRun(f);
+    return { ok: !!after, ms: Date.now() - t0, before, after, error: after ? undefined : '다시 분석하지 못했습니다' };
+  }, [folder, result, settings, unchecked, projectName]);
+
+  /** 새 프로젝트 생성이 끝난 폴더를 열고 바로 분석 */
+  const openFolderAndRun = (root: string) =>
+    guard('폴더를 읽는 중', async () => {
+      const f = await walkFolder(root);
+      if (!f) {
+        setError('폴더를 읽지 못했습니다.');
+        return;
+      }
+      loadFolder(f);
+      if (f.files.length) startRun(f, f.name);
+    });
 
   const stopRun = () => {
     runId.current++;
     workerRef.current?.terminate();
     workerRef.current = null;
+    keepView.current = false;
+    runWaiter.current?.(null, '중지');
+    runWaiter.current = null;
     setModal(null);
     setPhase(folder ? 'confirm' : 'home');
     showToast('분석을 중지했습니다.');
@@ -474,6 +564,21 @@ export function App(props: { init?: Initial }) {
 
   // ------------------------------------------------------------------ 화면
 
+  const shell = useDesktopShell({
+    root: folder?.root ?? null,
+    projectName,
+    model,
+    result,
+    target,
+    hasResult: phase === 'result' && !!result,
+    nav,
+    openFile,
+    toast: showToast,
+    reanalyze,
+    initialModal: init.deskModal,
+    initialChat: init.chat,
+  });
+
   const navValue: Nav | null = model ? { model, nav, openFile, toast: showToast } : null;
   const running = phase === 'running';
   const pct = rs ? overallPct(rs) : 0;
@@ -492,8 +597,26 @@ export function App(props: { init?: Initial }) {
         onOpenResult={openResult}
         onOpenRecent={openRecent}
         onRemoveRecent={(k) => removeRecent(k).then(refreshRecent)}
+        extraActions={
+          shell && (
+            <button
+              type="button"
+              class="btn lg"
+              disabled={!!loading}
+              onClick={() => {
+                const st = shell.app.claude?.state;
+                if (!shell.app.claudeConfig?.enabled || st === 'off' || st === 'missing') shell.app.openModal('claude');
+                else setPhase('new');
+              }}
+            >
+              <Icon name="sparkle" size={17} />
+              새 프로젝트
+            </button>
+          )
+        }
       />
     );
+  else if (phase === 'new' && shell) mainView = <NewProjectView onCancel={() => setPhase('home')} onOpenFolder={openFolderAndRun} />;
   else if (phase === 'confirm' && folder)
     mainView = (
       <Confirm
@@ -503,7 +626,7 @@ export function App(props: { init?: Initial }) {
         setProjectName={setProjectName}
         unchecked={unchecked}
         setUnchecked={setUnchecked}
-        onStart={startRun}
+        onStart={() => startRun()}
         onOther={pickFolder}
         error={error}
       />
@@ -524,6 +647,7 @@ export function App(props: { init?: Initial }) {
     else if (target.kind === 'table') mainView = <TableDetail id={target.id} />;
     else if (target.kind === 'menu') mainView = <MenuDetail id={target.id} />;
     else if (target.kind === 'batch') mainView = <BatchDetail id={target.id} />;
+    else if (shell) mainView = shell.renderTarget(target);
   }
 
   const body = (
@@ -539,6 +663,8 @@ export function App(props: { init?: Initial }) {
         onRun={onRun}
         onStop={() => setModal('stop')}
         onSettings={() => setModal('settings')}
+        extras={shell?.headerButtons}
+        onProjectChip={phase === 'result' || phase === 'confirm' ? shell?.onProjectChip : undefined}
         onHome={() => {
           if (phase === 'running') return;
           if (phase === 'result') nav({ kind: 'summary' });
@@ -559,7 +685,8 @@ export function App(props: { init?: Initial }) {
         onFile={(id, line) => openFile(id, line)}
         searchRef={searchRef}
       />
-      <main class="main">
+      <main class={`main${shell?.panel ? ' with-panel' : ''}`}>
+        <div class="main-col">
         <div class="main-scroll" ref={mainRef}>
           {phase === 'result' && result && (folder === null && !(init.mock && result === init.mock.result)) && (
             <div class="banner info" style={{ margin: '14px 24px 0', borderRadius: '8px' }}>
@@ -568,6 +695,20 @@ export function App(props: { init?: Initial }) {
               <button type="button" class="btn sm" onClick={connectFolder}>
                 <Icon name="link" size={14} />
                 원본 폴더 연결
+              </button>
+            </div>
+          )}
+          {phase === 'result' && runNotice && (
+            <div class="banner warn" style={{ margin: '14px 24px 0', borderRadius: '8px' }}>
+              <Icon name="warn" size={15} />
+              <span class="grow">{runNotice}</span>
+              {shell && (
+                <button type="button" class="btn sm" onClick={() => shell.app.openModal('project')}>
+                  프로젝트 연결 열기
+                </button>
+              )}
+              <button type="button" class="icon-btn" aria-label="닫기" onClick={() => setRunNotice(null)}>
+                <Icon name="close" size={14} />
               </button>
             </div>
           )}
@@ -585,6 +726,8 @@ export function App(props: { init?: Initial }) {
             onConnectFolder={connectFolder}
           />
         )}
+        </div>
+        {shell?.panel}
       </main>
       <footer class="sts" role="status">
         {phase === 'home' && (
@@ -657,7 +800,7 @@ export function App(props: { init?: Initial }) {
           title="다시 분석"
           message="다시 분석하면 지금 결과가 새 결과로 바뀝니다. 계속할까요?"
           ok="다시 분석"
-          extra={{ label: '결과 파일 저장 후 분석', onClick: () => { setModal(null); saveResult().then(startRun); } }}
+          extra={{ label: '결과 파일 저장 후 분석', onClick: () => { setModal(null); saveResult().then(() => startRun()); } }}
           onOk={() => { setModal(null); startRun(); }}
           onClose={() => setModal(null)}
         />
@@ -671,6 +814,7 @@ export function App(props: { init?: Initial }) {
           onClose={() => setModal(null)}
         />
       )}
+      {shell?.modals}
       {toast && <div class="toast" role="status">{toast}</div>}
       {phase !== 'home' && loading && (
         <div class="toast" role="status">
@@ -683,5 +827,6 @@ export function App(props: { init?: Initial }) {
     </div>
   );
 
-  return navValue ? <NavCtx.Provider value={navValue}>{body}</NavCtx.Provider> : body;
+  const withDesk = shell ? <DeskCtx.Provider value={shell.app}>{body}</DeskCtx.Provider> : body;
+  return navValue ? <NavCtx.Provider value={navValue}>{withDesk}</NavCtx.Provider> : withDesk;
 }

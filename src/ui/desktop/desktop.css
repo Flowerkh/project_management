@@ -1,0 +1,54 @@
+/* 데스크톱 기능 공통: 본문 옆 Claude 패널, 상단 버튼 상태, POP-04 틀 */
+
+/* 본문 = 왼쪽 결과 화면 + 오른쪽 Claude 패널 */
+.main.with-panel { flex-direction: row; }
+.main-col { flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.chat-panel {
+  flex: none; width: clamp(440px, 38vw, 620px); min-height: 0; display: flex; flex-direction: column; background: #fff;
+  border-left: 1px solid #bcc5cf; box-shadow: -12px 0 32px rgba(31, 41, 51, 0.12); position: relative; z-index: 32;
+}
+.chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--line2); }
+.chat-title { font-size: 15px; font-weight: 700; }
+.chat-sub { font-size: 12px; color: var(--muted); margin-top: 1px; display: flex; align-items: center; gap: 6px; }
+.chat-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.cl-logo { width: 28px; height: 28px; border-radius: 50%; background: var(--ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+
+/* Claude 연결 상태 점 (화면설계서 RULE: 사용 가능·인증 필요·오프라인·꺼짐) */
+.cl-dot { display: inline-block; flex: none; border-radius: 50%; }
+.cl-dot.on { background: #1c9e5b; }
+.cl-dot.login { background: #d08a1a; }
+.cl-dot.offline { background: #9aa5b1; }
+.cl-dot.off { background: transparent; border: 1.5px solid #8a95a3; }
+
+/* 눌린 상단 버튼 (이력·Claude) */
+.btn.pressed { background: var(--acc-bg); border-color: var(--acc-line); }
+.proj-chip.click { cursor: pointer; }
+.proj-chip.click:hover { border-color: var(--acc-line); background: var(--acc-bg); }
+
+/* POP-04 프로젝트 연결 */
+.modal.xl { width: min(1060px, calc(100vw - 40px)); max-height: calc(100vh - 80px); }
+.pc-ic { width: 32px; height: 32px; border-radius: 8px; background: var(--acc-bg); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.pc-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); min-height: 0; overflow: auto; }
+.pc-col { padding: 16px 20px 18px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.pc-col.right { border-left: 1px solid var(--line); }
+.pc-sec { display: flex; flex-direction: column; gap: 10px; }
+.pc-sec h3 { margin: 0; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.pc-sec h3 .right { margin-left: auto; display: flex; gap: 6px; }
+.ck { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.ck input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--acc); flex: none; }
+.ck .help { display: block; font-size: 12px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.err-text { color: var(--err); font-size: 12.5px; }
+
+/* 쿼리 카드 자리 (fork D가 꾸밈) */
+.qcard { border: 1px solid #f0d48a; background: #fffaf0; border-radius: 10px; padding: 10px 12px; }
+
+/* Claude 패널을 열어 본문이 좁아지면 두 칸 카드를 한 칸으로 */
+.main-col { container-type: inline-size; container-name: maincol; }
+@container maincol (max-width: 980px) {
+  .main-col .grid2, .main-col .grid2.wide-left { grid-template-columns: minmax(0, 1fr); }
+  .main-col .grid5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container maincol (max-width: 620px) {
+  .main-col .grid5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .main-col .page { padding: 16px 16px 24px; }
+}

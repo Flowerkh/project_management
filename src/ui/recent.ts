@@ -12,6 +12,8 @@ export interface RecentItem {
   analyzedAt: string;
   analyzedFiles: number;
   savedAt: number;
+  /** 데스크톱 앱: 분석한 폴더의 절대 경로 (다시 열 때 원본 폴더를 자동으로 연결) */
+  root?: string;
 }
 
 function open(): Promise<IDBDatabase | null> {
@@ -50,20 +52,21 @@ function tx<T>(db: IDBDatabase, mode: IDBTransactionMode, fn: (s: IDBObjectStore
 export async function listRecent(): Promise<RecentItem[]> {
   const db = await open();
   if (!db) return [];
-  const all = (await tx<{ key: string; name: string; analyzedAt: string; analyzedFiles: number; savedAt: number }[]>(db, 'readonly', (s) => s.getAll())) ?? [];
+  const all = (await tx<RecentItem[]>(db, 'readonly', (s) => s.getAll())) ?? [];
   db.close();
   return all
-    .map(({ key, name, analyzedAt, analyzedFiles, savedAt }) => ({ key, name, analyzedAt, analyzedFiles, savedAt }))
+    .map(({ key, name, analyzedAt, analyzedFiles, savedAt, root }) => ({ key, name, analyzedAt, analyzedFiles, savedAt, ...(root ? { root } : {}) }))
     .sort((a, b) => b.savedAt - a.savedAt)
     .slice(0, KEEP);
 }
 
-export async function saveRecent(result: AnalysisResult): Promise<void> {
+export async function saveRecent(result: AnalysisResult, root?: string): Promise<void> {
   const db = await open();
   if (!db) return;
-  const key = result.project.name;
+  // 데스크톱에서 폴더로 연 프로젝트는 경로로 구분 (이름이 같은 다른 폴더)
+  const key = root ? `${result.project.name}|${root}` : result.project.name;
   await tx(db, 'readwrite', (s) =>
-    s.put({ key, name: result.project.name, analyzedAt: result.project.analyzedAt, analyzedFiles: result.stats.analyzedFiles, savedAt: Date.now(), result }),
+    s.put({ key, name: result.project.name, analyzedAt: result.project.analyzedAt, analyzedFiles: result.stats.analyzedFiles, savedAt: Date.now(), result, ...(root ? { root } : {}) }),
   );
   // 오래된 항목 정리
   const all = (await tx<{ key: string; savedAt: number }[]>(db, 'readonly', (s) => s.getAll())) ?? [];

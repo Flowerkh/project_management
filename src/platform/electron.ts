@@ -20,6 +20,9 @@ export interface ElectronBridge {
   readFiles(root: string, rels: string[]): Promise<(Uint8Array | null)[]>;
   saveFile(name: string, text: string): Promise<string | false>;
   openTextFile(exts: string[]): Promise<{ name: string; text: string } | null>;
+  /** 3단계 데스크톱 기능 (src/shared/desktop-api.ts). 결과는 봉투로 온다 */
+  invoke?(channel: string, args: unknown[]): Promise<{ ok: true; value: unknown } | { ok: false; error: { message: string; code: string; data?: unknown } }>;
+  onEvent?(fn: (ev: unknown) => void): () => void;
 }
 
 declare global {
@@ -33,7 +36,15 @@ function toFolder(bridge: ElectronBridge, w: WalkResult): LoadedFolder {
     const rel = f.path.slice(f.path.indexOf('/') + 1);
     return { path: rel, size: f.size, read: () => bridge.readFile(w.root, f.path) };
   });
-  return { name: w.name, files };
+  return { name: w.name, root: w.root, files };
+}
+
+/** 데스크톱 앱에서 폴더를 다시 읽는다 (적용 후 다시 분석, 최근 프로젝트 다시 열기) */
+export async function walkFolder(root: string): Promise<LoadedFolder | null> {
+  const bridge = typeof window !== 'undefined' ? window.__ELECTRON__ : undefined;
+  if (!bridge) return null;
+  const w = await bridge.walk(root);
+  return w ? toFolder(bridge, w) : null;
 }
 
 export function createElectronPlatform(bridge: ElectronBridge): Platform {
