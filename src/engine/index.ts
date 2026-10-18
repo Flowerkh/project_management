@@ -8,6 +8,7 @@ import { link } from './link';
 import { databases, describe, languages, systemTypes, techTable } from './summary';
 import { pruneVendorMappers } from './vendor';
 import { assignSubProjects, subProjectList } from './projects';
+import { addDbMenus } from './dbmenu';
 
 export * from './types';
 export { decode } from './files';
@@ -67,6 +68,12 @@ export async function analyze(input: SourceFile[], opts: AnalyzeOptions = {}): P
     }
     report({ step, stepName: STEPS[step - 1], done: targets.length, total: targets.length });
     await tick();
+  }
+
+  // DB 메뉴 테이블에서 읽은 메뉴 (데스크톱 앱, 설정에서 켰을 때)
+  if (opts.dbMenus?.rows?.length) {
+    const n = addDbMenus(facts, opts.dbMenus);
+    report({ step: 3, stepName: STEPS[2], done: targets.length, total: targets.length, message: `DB 메뉴 ${opts.dbMenus.table} → 메뉴 ${n}개` });
   }
 
   // 4~5. 연결·역할

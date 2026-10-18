@@ -535,6 +535,7 @@ export function MenuDetail(props: { id: string }) {
             <span class="chip" style={{ height: '26px', background: 'var(--ok-bg)', borderColor: 'transparent', color: 'var(--ok)' }}>
               <Icon name="db" size={13} color="var(--ok)" />
               메뉴 출처 {SOURCE_LABEL[m.source]}
+              {!src && m.source === 'db' && m.evidence?.text && <b class="mono">{m.evidence.text}</b>}
               {src && (
                 <button type="button" class="lnk mono" style={{ color: 'var(--ok)' }} onClick={() => openFile(src.id, m.evidence!.line)}>
                   {src.name}:{m.evidence!.line}

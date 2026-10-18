@@ -409,8 +409,17 @@ export interface Progress {
   message?: string;
 }
 
+/** 데스크톱 앱이 분석 전에 DB 메뉴 테이블에서 읽은 메뉴 (조회 계정, SELECT만) */
+export interface DbMenuInput {
+  /** 읽은 메뉴 테이블 이름 (근거 표시용) */
+  table: string;
+  rows: { key: string; parentKey?: string; name: string; url?: string; order?: number }[];
+}
+
 export interface AnalyzeOptions {
   projectName?: string;
+  /** DB 메뉴 테이블에서 읽은 메뉴. 있으면 메뉴 트리는 DB 기준 (기획서 6.5) */
+  dbMenus?: DbMenuInput;
   /** 추가 제외 경로 패턴 (glob 일부: **, *) */
   exclude?: string[];
   /** 파일 하나 최대 크기 (기본 2MB). 넘으면 앞부분만 읽지 않고 제외 */
