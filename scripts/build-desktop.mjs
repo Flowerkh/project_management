@@ -9,11 +9,25 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dev = process.argv.includes('--dev');
 const t0 = Date.now();
+// --out <폴더>: desktop/ 대신 이 폴더에 앱을 만든다 (동시에 여러 작업이 시험할 때). node_modules는 desktop/ 것을 링크
+const outIdx = process.argv.indexOf('--out');
+const outDir = outIdx > 0 && process.argv[outIdx + 1] ? path.resolve(process.argv[outIdx + 1]) : null;
+if (outDir && !process.argv.includes('--dist')) process.argv.push('--dist', path.join(outDir, 'dist'));
+const distIdx = process.argv.indexOf('--dist');
+const dist = distIdx > 0 ? path.resolve(process.argv[distIdx + 1]) : path.join(root, 'dist');
 
 await import('./build.mjs');
 
-const desktop = path.join(root, 'desktop');
-const pkg = JSON.parse(await fs.readFile(path.join(desktop, 'package.json'), 'utf8'));
+const desktopSrc = path.join(root, 'desktop');
+const desktop = outDir ?? desktopSrc;
+await fs.mkdir(desktop, { recursive: true });
+if (outDir) {
+  await fs.copyFile(path.join(desktopSrc, 'package.json'), path.join(outDir, 'package.json'));
+  const nm = path.join(outDir, 'node_modules');
+  const exists = await fs.lstat(nm).catch(() => null);
+  if (!exists) await fs.symlink(path.join(desktopSrc, 'node_modules'), nm, 'dir');
+}
+const pkg = JSON.parse(await fs.readFile(path.join(desktopSrc, 'package.json'), 'utf8'));
 const external = ['electron', ...Object.keys(pkg.dependencies ?? {})];
 
 await Promise.all([
@@ -50,6 +64,6 @@ await Promise.all([
 ]);
 
 await fs.rm(path.join(desktop, 'app'), { recursive: true, force: true });
-await fs.cp(path.join(root, 'dist', 'app'), path.join(desktop, 'app'), { recursive: true });
+await fs.cp(path.join(dist, 'app'), path.join(desktop, 'app'), { recursive: true });
 const st = await fs.stat(path.join(desktop, 'main.mjs'));
 console.log(`desktop build ok in ${Date.now() - t0}ms · main.mjs ${Math.round(st.size / 1024)}KB`);

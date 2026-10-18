@@ -7,8 +7,10 @@ import sys
 from playwright.sync_api import sync_playwright
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-HTML = os.path.join(ROOT, 'dist', 'web', 'project-analyzer.html')
-OUT = os.path.join(ROOT, 'dist', 'shots')
+# PA_DIST: build.mjs --dist 로 따로 빌드한 폴더 (여러 작업이 동시에 시험할 때)
+DIST = os.environ.get('PA_DIST') or os.path.join(ROOT, 'dist')
+HTML = os.path.join(DIST, 'web', 'project-analyzer.html')
+OUT = os.path.join(DIST, 'shots')
 FONTS = '/tmp/claude-0/-home-claude/6d747a07-d1a7-516e-a9ca-80b6c0690766/scratchpad/fonts/node_modules/@fontsource'
 
 SHOTS = {

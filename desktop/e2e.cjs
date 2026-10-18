@@ -9,7 +9,10 @@ const { _electron: electron } = require('playwright-core');
   const folder = path.resolve(process.argv[2] || path.join(__dirname, '..', 'fixtures', 'shop-admin'));
   const out = path.resolve(process.argv[3] || path.join(__dirname, '..', 'dist', 'shots'));
   fs.mkdirSync(out, { recursive: true });
-  const app = await electron.launch({ executablePath: require('electron'), args: [__dirname, '--no-sandbox'], cwd: __dirname });
+  // PA_APP_DIR: build-desktop.mjs --out 으로 만든 앱 폴더, PA_USER_DATA: 앱 데이터 폴더 (시험마다 따로)
+  const appDir = process.env.PA_APP_DIR || __dirname;
+  const userData = process.env.PA_USER_DATA || fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pa-e2e-'));
+  const app = await electron.launch({ executablePath: require('electron'), args: [appDir, '--no-sandbox', `--user-data-dir=${userData}`], cwd: appDir, env: { ...process.env, PA_E2E: '1' } });
   await app.evaluate(({ dialog }, f) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [f] });
   }, folder);

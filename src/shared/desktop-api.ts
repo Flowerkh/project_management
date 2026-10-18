@@ -153,6 +153,8 @@ export interface QueryCard {
   description?: string;
   /** 예상 영향 행 수 (COUNT로 계산, 못 하면 없음) */
   estimate?: number;
+  /** 예상 행 수를 못 구한 이유 (없으면 실행 즉시 확정되므로 되돌릴 수 없는 쿼리처럼 한 번 더 확인) */
+  estimateNote?: string;
   /** DDL·프로시저 등 롤백할 수 없는 문장 */
   irreversible: boolean;
   revertSql?: string;
@@ -179,6 +181,16 @@ export interface VcsInfo {
   /** 원본의 커밋 안 된 변경 수 */
   dirty?: number;
   error?: string;
+}
+
+/** POP-04 ③ 연결 확인 */
+export interface VcsCheck {
+  /** 원격 저장소 연결 (git ls-remote / svn info URL). 형상관리 없으면 없음 */
+  remote?: { ok: boolean; message: string };
+  /** 작업 사본을 만들 앱 작업 폴더의 여유 공간 */
+  space: { ok: boolean; freeBytes: number; path: string };
+  /** PC에 저장된 로그인 안내 (예: 'Git Credential Manager') — 계정 정보 자체는 읽지 않음 */
+  login?: string;
 }
 
 /** Claude가 고치는 프로젝트 사본: 원본의 현재 상태를 앱 작업 폴더에 복사 */
@@ -221,6 +233,8 @@ export interface FileChange {
   conflict?: boolean;
   /** 적용할 수 없는 파일과 이유 (접속 정보 파일, 가린 값을 고친 줄 등) */
   blocked?: string;
+  /** 작업 사본을 만들 때 원본에 이미 커밋 안 된 변경이 있던 파일 (커밋하면 그 변경도 함께 들어감) */
+  dirtyBase?: boolean;
 }
 
 export interface ApplyRequest {
@@ -349,7 +363,8 @@ export type ChatItem =
 /** 사용자 결정이 필요한 요청 (셸 명령 MSG-24, 운영 DB 조회 MSG-42) */
 export interface PendingRequest {
   requestId: string;
-  kind: 'command' | 'prod-select';
+  /** command 셸 명령(MSG-24) / prod-select 운영 DB 조회(MSG-42) / plan 계획 모드에서 Claude가 수정을 시작하려 함 ([수정 진행]) */
+  kind: 'command' | 'prod-select' | 'plan';
   title: string;
   detail: string;
   sql?: string;
@@ -404,9 +419,13 @@ export interface DesktopApi {
   'project.set'(root: string, patch: Partial<Omit<ProjectSettings, 'root' | 'db'>>): ProjectSettings;
 
   'vcs.detect'(root: string): VcsInfo;
+  /** 원격 연결·작업 공간 확인 (POP-04 [연결 확인]) */
+  'vcs.check'(root: string): VcsCheck;
 
   'work.create'(root: string, conversationId?: string): WorkCopy;
   'work.get'(workId: string): WorkCopy | null;
+  /** 이 프로젝트의 작업 사본들 (최근 것부터) */
+  'work.list'(root: string): WorkCopy[];
   'work.changes'(workId: string): FileChange[];
   'work.discard'(workId: string, files?: string[]): FileChange[];
   'work.apply'(workId: string, req: ApplyRequest): ApplyResult;
@@ -434,6 +453,10 @@ export interface DesktopApi {
   'claude.interrupt'(conversationId: string): void;
   'claude.respond'(conversationId: string, requestId: string, allow: boolean): void;
   'claude.delete'(conversationId: string): void;
+  /** 대화 내용을 Markdown 파일로 저장 (F-21). 저장한 경로, 취소하면 false */
+  'claude.export'(conversationId: string): string | false;
+  /** claude 실행 파일 직접 지정 ([경로 지정]). 고른 경로, 취소하면 null */
+  'claude.pickCli'(): string | null;
 
   'db.list'(root: string): DbConnection[];
   'db.save'(root: string, conn: DbConnectionInput): DbConnection;

@@ -8,7 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dist = path.join(root, 'dist');
+// --dist <폴더>: 여러 작업이 동시에 빌드할 때 출력 폴더를 나눈다 (기본 dist/)
+const distIdx = process.argv.indexOf('--dist');
+const dist = distIdx > 0 && process.argv[distIdx + 1] ? path.resolve(process.argv[distIdx + 1]) : path.join(root, 'dist');
 const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
 const dev = process.argv.includes('--dev');
 
