@@ -1,0 +1,205 @@
+/* DB 연결 (POP-04 오른쪽) · 쿼리 카드 (SCR-09 ⑧) · 확인 창 (MSG-32·33·41) — 접두어 db- */
+
+/* ------------------------------------------------------------ 공통 */
+.scrim.db-scrim { z-index: 70; padding-top: 72px; }
+.scrim.db-scrim .modal { max-height: calc(100vh - 100px); }
+.db-envtag { display: inline-flex; align-items: center; justify-content: center; height: 19px; padding: 0 7px; border-radius: 5px; font-size: 11px; font-weight: 600; white-space: nowrap; flex: none; }
+.db-envtag.dev { color: var(--ink2); background: var(--surf2); }
+.db-envtag.qa { color: var(--acc-d); background: var(--acc-bg); }
+.db-envtag.prod { color: var(--err); background: var(--err-bg); }
+.db-note { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.db-note .ic { flex: none; }
+.db-sep { flex: none; height: 1px; background: var(--line2); }
+.db-sec { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.db-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.db-sec-head h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.db-sec-head .acts { display: flex; gap: 6px; }
+.db-sec-head .btn.sm { height: 28px; font-size: 12.5px; }
+
+/* ------------------------------------------------------------ DB 연결 목록 */
+.db-list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.db-row { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px; border-bottom: 1px solid var(--line2); background: #fff; cursor: pointer; outline: none; }
+.db-row:last-child { border-bottom: none; }
+.db-row:hover { background: var(--surf); }
+.db-row:focus-visible { box-shadow: inset 0 0 0 2px var(--acc-line); }
+.db-row .l1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.db-row .l1 .env { flex: none; width: 36px; display: flex; }
+.db-row .l1 .nm { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.db-row .l1 .kd { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.db-row .l1 .sp { flex: 1; }
+.db-row .l1 .edit { opacity: 0; color: var(--muted); font-size: 12px; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
+.db-row:hover .l1 .edit, .db-row:focus-visible .l1 .edit { opacity: 1; }
+.db-row .l2 { display: flex; align-items: center; gap: 6px; padding-left: 46px; white-space: nowrap; overflow: hidden; min-width: 0; }
+.db-row .l2 .v { font-family: var(--mono); font-size: 11.5px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; }
+.db-row .l2 .v.host { font-weight: 400; }
+.db-row .l2 .k { font-size: 11.5px; color: var(--muted); flex: none; }
+.db-row .l2 .dot { color: var(--faint); flex: none; }
+.db-row .l2 .warnk { font-size: 11.5px; color: var(--warn); flex: none; }
+.db-row .l3 { padding-left: 46px; display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--err); line-height: 1.45; cursor: default; }
+.db-row .l3 .ic { margin-top: 2px; }
+.db-row .l3 .detail { color: var(--muted); }
+.db-row .l3 .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; margin-left: auto; }
+.db-stat { flex: none; width: 16px; height: 16px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
+.db-stat.ok { background: var(--ok-bg); }
+.db-stat.err { background: var(--err-bg); }
+.db-stat.none { border: 1.5px dashed #b8c1cc; }
+.db-empty { padding: 16px 14px; text-align: center; color: var(--muted); font-size: 12.5px; line-height: 1.6; border: 1px dashed var(--line); border-radius: 8px; background: #fff; }
+
+/* ------------------------------------------------------------ 환경별 규칙 */
+.db-rules { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid var(--line); }
+.db-rules th { padding: 6px 8px; font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--surf); border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-rules td { padding: 4px 8px; height: 33px; font-size: 12.5px; color: var(--ink); border-bottom: 1px solid var(--line2); vertical-align: middle; white-space: nowrap; }
+.db-rules tr:last-child td { border-bottom: none; }
+.db-rules th.c, .db-rules td.c { text-align: center; }
+.db-rules .q { display: flex; align-items: center; gap: 0; min-width: 0; }
+.db-rules .q .sep { color: var(--ink2); padding: 0 4px; flex: none; }
+.db-rules .q .u { color: var(--ink2); flex: none; }
+.db-rules .locked { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; flex: none; }
+.db-ghost {
+  height: 25px; border: 1px solid transparent; border-radius: 5px; background-color: transparent; padding: 0 3px; font-size: 12.5px; color: var(--ink);
+  outline: none; font-family: inherit; min-width: 0; flex: none;
+}
+.db-ghost:hover { border-color: var(--line); background-color: #fff; }
+.db-ghost:focus { border-color: var(--acc); background-color: #fff; box-shadow: 0 0 0 2px rgba(36, 87, 214, 0.15); }
+select.db-ghost {
+  cursor: pointer; appearance: none; -webkit-appearance: none; padding-right: 15px; margin-left: -3px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 3px center;
+}
+select.db-ghost:hover, select.db-ghost:focus {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%232457d6' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+}
+input.db-ghost.num { text-align: right; padding: 0 1px 0 3px; margin-right: 0; font-variant-numeric: tabular-nums; }
+input.db-ghost.num::-webkit-inner-spin-button { display: none; }
+.db-toggle { position: relative; display: inline-block; width: 32px; height: 18px; border-radius: 9px; background: #c3cad3; border: none; padding: 0; vertical-align: middle; cursor: pointer; flex: none; transition: background 0.15s; }
+.db-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 7px; background: #fff; transition: left 0.15s; }
+.db-toggle.on { background: var(--acc); }
+.db-toggle.on::after { left: 16px; }
+.db-toggle:focus-visible { outline: 2px solid var(--acc-line); outline-offset: 2px; }
+
+/* 가림 대상 */
+.db-field { display: flex; align-items: flex-start; gap: 10px; }
+.db-field > .lbl { flex: none; width: 72px; padding-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.db-field > .body { flex: 1; min-width: 0; }
+.db-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.db-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 4px 0 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--surf); }
+.db-chip .p { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--ink); }
+.db-chip .w { font-size: 11.5px; color: var(--muted); }
+.db-chip button { flex: none; width: 20px; height: 20px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; color: var(--muted); }
+.db-chip button:hover { background: var(--surf2); color: var(--ink); }
+.db-chip-add { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 8px; border-radius: 6px; border: 1px dashed #aeb8c4; background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+.db-chip-add:hover { border-color: var(--acc-line); background: var(--acc-bg); }
+.db-chip-input { height: 28px; width: 190px; padding: 0 8px; border: 1px solid var(--acc); border-radius: 6px; font-family: var(--mono); font-size: 12px; outline: none; box-shadow: 0 0 0 2px rgba(36, 87, 214, 0.15); }
+.db-chip-err { flex-basis: 100%; font-size: 12px; color: var(--err); }
+
+/* ------------------------------------------------------------ 메뉴 테이블 */
+.db-switch { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--ink2); cursor: pointer; white-space: nowrap; }
+.db-menu { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.db-menu .ck { font-size: 13px; }
+.db-menu-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px 8px; }
+.db-menu-grid label, .db-menu-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 600; color: var(--muted); min-width: 0; }
+.db-menu-row { display: flex; gap: 8px; align-items: flex-end; }
+.db-menu-row > label { flex: 1; }
+.db-menu-row > label.w-conn { flex: 0 0 180px; }
+.db-menu .inp { height: 30px; font-size: 12.5px; padding: 0 8px; min-width: 0; width: 100%; }
+.db-menu .inp.mono { font-family: var(--mono); font-size: 12px; }
+.db-menu .sug { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.db-menu .sug button { height: 22px; padding: 0 7px; border-radius: 5px; border: 1px solid var(--line); background: var(--surf); font-family: var(--mono); font-size: 11.5px; color: var(--ink2); }
+.db-menu .sug button:hover { border-color: var(--acc-line); background: var(--acc-bg); }
+.db-preview { max-height: 168px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.db-preview table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.db-preview th { position: sticky; top: 0; background: var(--surf); padding: 4px 8px; font-size: 11.5px; font-weight: 600; color: var(--muted); text-align: left; border-bottom: 1px solid var(--line); }
+.db-preview td { padding: 3px 8px; font-size: 12px; border-bottom: 1px solid var(--line2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-preview td.mono { font-family: var(--mono); font-size: 11.5px; }
+
+/* ------------------------------------------------------------ 연결 추가·수정 창 */
+.modal.db-dlg { width: min(580px, calc(100vw - 40px)); }
+.db-dlg .modal-body { gap: 11px; padding: 14px 20px 16px; }
+.db-form-row { display: flex; align-items: center; gap: 10px; }
+.db-form-row > .lbl { flex: none; width: 92px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.db-form-row > .lbl .opt { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.db-form-row > .body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.db-form-row .inp { height: 32px; min-width: 0; flex: 1; }
+.db-form-row .inp.mono { font-family: var(--mono); font-size: 12.5px; }
+.db-form-row .inp.port { flex: 0 0 76px; width: 76px; }
+.db-form-row .mini { flex: none; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.db-seg { display: inline-flex; border: 1px solid #c9d0d8; border-radius: 7px; overflow: hidden; flex: none; }
+.db-seg button { height: 30px; padding: 0 13px; border: none; border-right: 1px solid #c9d0d8; background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ink2); }
+.db-seg button:last-child { border-right: none; }
+.db-seg button:hover:not(.on) { background: var(--surf); }
+.db-seg button.on { background: var(--acc-bg); color: var(--acc-d); box-shadow: inset 0 0 0 1px var(--acc); }
+.db-seg button:focus-visible { outline: 2px solid var(--acc-line); outline-offset: -2px; }
+.db-radio { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink2); cursor: pointer; white-space: nowrap; }
+.db-radio input { accent-color: var(--acc); margin: 0; }
+.db-help { font-size: 12px; color: var(--muted); line-height: 1.55; padding-left: 102px; }
+.db-test { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.5; }
+.db-test.ok { background: var(--ok-bg); color: var(--ok); }
+.db-test.err { background: var(--err-bg); color: var(--err); }
+.db-test.run { background: var(--surf); color: var(--muted); }
+.db-test .ic { margin-top: 2px; }
+.db-test .detail { display: block; color: var(--ink2); font-size: 12px; margin-top: 2px; }
+.db-dlg .modal-foot .left { margin-right: auto; }
+
+/* ------------------------------------------------------------ 쿼리 카드 (SCR-09 ⑧) */
+.db-qcard { display: flex; flex-direction: column; gap: 6px; padding: 9px 12px; border: 1px solid #ebcb8b; border-radius: 10px; background: #fffbf2; min-width: 0; }
+.db-qcard { container-type: inline-size; container-name: dbqcard; }
+@container dbqcard (max-width: 560px) {
+  .db-qc-dbname { display: none; }
+}
+.db-qcard.done { border-color: #b9dcc7; background: #f6fbf8; }
+.db-qcard.bad { border-color: #efc3bd; background: #fffafa; }
+.db-qcard.rejected { border-color: var(--line); background: var(--surf); }
+.db-qc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.db-qc-head .db-qc-title { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.db-qc-head .db-qc-meta { font-size: 12.5px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.db-qc-head .db-qc-meta .mono { font-size: 12px; }
+.db-qc-head .db-qc-sp { flex: 1; }
+.db-qc-head .btn.sm { height: 30px; font-size: 12.5px; padding: 0 12px; }
+.db-qc-sql { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 6px; background: #fff; border: 1px solid #f1e2c2; min-width: 0; }
+.db-qcard.done .db-qc-sql, .db-qcard.bad .db-qc-sql, .db-qcard.rejected .db-qc-sql { border-color: var(--line2); }
+.db-qc-sql .db-qc-s { flex: 1; min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-qc-sql .lnk { flex: none; font-size: 12px; }
+.db-qc-pre { margin: 0; padding: 8px 10px; border-radius: 6px; background: #fff; border: 1px solid var(--line2); font-family: var(--mono); font-size: 11.5px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; }
+.db-qc-sub { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.db-qc-sub b { color: var(--ink2); font-weight: 600; }
+.db-qc-note { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); line-height: 1.45; min-width: 0; }
+.db-qc-note .ic { flex: none; }
+.db-qc-note .db-qc-txt { min-width: 0; }
+.db-qc-links { display: flex; align-items: center; gap: 14px; }
+.db-qc-links .lnk { font-size: 12px; }
+.db-qc-links .lnk.muted { color: var(--muted); }
+.db-qc-result { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; min-width: 0; }
+.db-qc-result.ok { color: var(--ok); }
+.db-qc-result.err { color: var(--err); }
+.db-qc-result.muted { color: var(--muted); font-weight: 500; }
+.db-qc-result .lnk { margin-left: auto; font-size: 12px; }
+.db-qc-result .flabel { flex: none; }
+.db-qc-result .db-qc-em { font-weight: 500; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.db-qc-banner { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 7px; background: var(--err-bg); color: var(--err); font-size: 12.5px; line-height: 1.5; }
+.db-qc-banner .ic { margin-top: 2px; }
+.db-qc-banner .btn.sm { margin-left: auto; height: 26px; background: #fff; }
+.db-qc-ro { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 7px; background: var(--err-bg); color: var(--err); font-size: 12.5px; line-height: 1.5; }
+.db-qc-ro .db-qc-acts { display: flex; gap: 6px; margin-top: 6px; }
+.db-qc-ro .db-qc-acts .btn.sm { height: 26px; }
+.db-qc-ro .ic { margin-top: 2px; }
+
+/* 실행 확인 창 */
+.modal.db-confirm { width: min(580px, calc(100vw - 40px)); }
+.db-confirm .modal-body { gap: 12px; }
+.db-facts { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.db-facts > div { padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; border-right: 1px solid var(--line2); }
+.db-facts > div:last-child { border-right: none; }
+.db-facts .db-fk { font-size: 12px; color: var(--muted); font-weight: 600; }
+.db-facts .db-fv { display: flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.db-facts .db-fv.mono { font-family: var(--mono); font-size: 17px; }
+.db-facts .db-fv.small { font-size: 15px; }
+.db-facts.prod { border-color: #efc3bd; }
+.db-facts.prod > div:first-child { background: #fff7f6; }
+.db-confirm .db-sqlbox { margin: 0; max-height: 150px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surf); font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+.db-confirm .db-msgtext { font-size: 13.5px; line-height: 1.65; color: var(--ink); }
+.db-confirm .db-subtext { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.db-typed { display: flex; flex-direction: column; gap: 6px; }
+.db-typed label { font-size: 13px; font-weight: 600; }
+.db-typed .inp { font-family: var(--mono); font-size: 13px; height: 36px; }
+.db-typed .inp.db-match { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(28, 110, 70, 0.12); }
+.db-typed .db-hint { font-size: 12px; color: var(--muted); }
