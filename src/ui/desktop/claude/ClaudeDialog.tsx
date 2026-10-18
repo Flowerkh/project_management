@@ -1,6 +1,6 @@
 // POP-03 Claude 연결: 인증 방식 · 연결 확인(CLI·인터넷·인증) · 보내는 정보 · 기본 권한 · AI 요약 · 연동 켜기(MSG-14 동의).
 // 앱은 Claude 계정 정보·로그인 토큰을 읽거나 저장하지 않는다. 로그인은 [터미널에서 로그인]으로 연 Claude Code 화면에서 한다.
-// API 키는 저장할 때만 보내고 화면에 다시 보여 주지 않는다(메인 프로세스가 Windows 자격 증명으로 암호화해 보관).
+// API 키는 저장할 때만 보내고 화면에 다시 보여 주지 않는다(메인 프로세스가 Windows 사용자 계정 기준(DPAPI)으로 암호화해 보관).
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AuthMode, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../../shared/desktop-api';
 import { Icon, Spinner } from '../../icons';
@@ -383,7 +383,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
                       </span>
                     </>
                   )}
-                  <Radio on={authMode === 'apikey'} label="API 키" help="Console 발급 키, 회사 발급 키 가능 · Windows 자격 증명 관리자에 저장" onPick={() => setAuthMode('apikey')} />
+                  <Radio on={authMode === 'apikey'} label="API 키" help="Console 발급 키, 회사 발급 키 가능 · Windows 사용자 계정으로 암호화해 저장" onPick={() => setAuthMode('apikey')} />
                   {authMode === 'apikey' && (
                     <div class="cp-auth-sub">
                       <div class="cp-field-row">
@@ -496,10 +496,11 @@ export function ClaudeDialog(props: { onClose: () => void }) {
               <div class="cp-dlg-hsep" />
 
               {/* 5. AI 요약 */}
-              <label class="cp-check">
-                <input type="checkbox" checked={aiSummary} onChange={(e) => setAiSummary((e.target as HTMLInputElement).checked)} />
+              {/* AI 요약(F-10)은 아직 동작하지 않아 고를 수 없게 둔다 (다음 버전) */}
+              <label class="cp-check" style={{ opacity: 0.6, cursor: 'default' }}>
+                <input type="checkbox" checked={false} disabled onChange={() => setAiSummary(false)} />
                 <span>
-                  <span class="l">AI 요약도 사용</span>
+                  <span class="l">AI 요약도 사용 <span class="tag neutral" style={{ marginLeft: '4px' }}>다음 버전</span></span>
                   <span class="h">결과 요약·역할 문장을 Claude로 다듬음. 파일 경로·화면 제목·SQL 일부를 보냄(접속 정보는 가림)</span>
                 </span>
               </label>

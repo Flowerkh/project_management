@@ -95,7 +95,7 @@ function ActivityLine(props: { item: Activity; open: boolean; toggle: () => void
       <button type="button" class={`cp-tl${more ? ' click' : ''}`} onClick={more ? props.toggle : undefined} aria-expanded={more ? props.open : undefined} disabled={!more}>
         {props.running ? <Spinner size={13} /> : <Icon name={ic} size={13} color="var(--icon)" />}
         <span class={`v${props.running ? ' run' : ''}`}>{verb}</span>
-        <span class={`g${editLike ? ' mono' : ''}`} title={item.summary}>{item.summary}</span>
+        <span class={`g${editLike ? ' mono' : ''}`} title={item.summary}>{item.summary.replace(/^작업\s*\d+\s*건\s*(·\s*)?/, '').replace(editLike ? /\s*생성$/ : /$^/, '')}</span>
         {more && <Icon name={props.open ? 'chev_down' : 'chev_right'} size={13} color="var(--faint)" sw={2} />}
       </button>
       {props.open && more && (
@@ -417,7 +417,8 @@ function PendingView(props: { pending: PendingRequest; conv: Conversation; canEd
     p.kind === 'plan' && props.showPlan && p.detail?.trim() ? (
       <div class="cp-plan-box">
         <div class="h">{props.conv.kind === 'new' ? '계획' : '수정 계획'}</div>
-        <Markdown text={p.detail} env={props.env} />
+        {/* 계획 첫 줄이 '## 수정 계획'처럼 머리글과 같으면 한 번만 보이게 뺀다 */}
+        <Markdown text={p.detail.replace(/^\s*#{1,6}\s*(수정\s*)?계획\s*\n+/, '')} env={props.env} />
       </div>
     ) : null;
   if (p.kind === 'plan') {

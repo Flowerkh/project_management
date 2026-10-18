@@ -3,8 +3,10 @@
 프로젝트 폴더를 불러와 **[Run]** 을 누르면 어떤 시스템인지와 **DB 테이블·메뉴·화면·배치**의 관계를 정리해 보여 주는 분석 도구입니다.
 Windows 데스크톱 앱(Electron)과 파일 하나짜리 HTML로 동작하고, 분석은 인터넷 없이 PC 안에서 끝납니다.
 
-- 현재 버전: **v0.3** (프로토타입) — 분석 엔진·결과 화면, Python·앱 분석
-- 진행 중(3단계 MVP): Claude 연동(대화형 이슈 처리·수정·새 프로젝트), 형상관리(Git·SVN)·작업 이력, DB 연결(조회 도구·쿼리 확인 실행·메뉴 DB 읽기)
+- 현재 버전: **v0.4** (프로토타입)
+  - 분석 엔진·결과 화면 (Java·JSP·MyBatis, PHP, Go, Python, Android·React Native·Flutter, 셸·배치)
+  - 데스크톱 앱: Claude 연동(대화형 이슈 처리·수정·새 프로젝트), 형상관리(Git·SVN)·작업 이력, DB 연결(조회 도구·쿼리 확인 실행·메뉴 DB 읽기)
+- 다음: Excel·HTML 보고서 내보내기, JavaScript(Express·NestJS·React·Vue) 화면 추출, AI 요약
 
 ## 분석 대상
 
@@ -32,6 +34,24 @@ test/          엔진·데스크톱 모듈 시험
 docs/          사용방법
 ```
 
+## 실행 (Windows, 소스에서)
+
+Node.js 22 LTS를 설치한 뒤 저장소 폴더에서 (PowerShell 또는 cmd):
+
+```
+npm install
+cd desktop
+npm install
+cd ..
+node scripts/build-desktop.mjs
+```
+
+- 바로 실행: `cd desktop` → `npx electron .`
+- 실행 파일(zip) 만들기: `cd desktop` → `npx electron-builder --win zip --x64 --publish never` → `release\ProjectAnalyzer-<버전>-win.zip` (압축을 풀고 `ProjectAnalyzer.exe`)
+- 브라우저용 HTML 한 파일: `node scripts/build.mjs` → `dist\web\project-analyzer.html` (Claude·형상관리·DB 기능은 데스크톱 앱에서만)
+
+사용법은 [docs/사용방법.txt](docs/사용방법.txt).
+
 ## 개발
 
 ```bash
@@ -46,6 +66,10 @@ npx tsx scripts/analyze.ts <폴더>  # 명령줄 분석 (결과 JSON)
 ```
 
 화면 미리보기: `dist/web/project-analyzer.html?mock=1` (데스크톱 기능 미리보기는 `?mock=1&desk`).
+
+통합 점검(리눅스, xvfb): `node scripts/build-desktop.mjs --dev --out /tmp/pa/app` 뒤
+`xvfb-run -a node scripts/e2e-desktop.cjs /tmp/pa/app /tmp/pa/e2e` (분석 → Claude(가짜 CLI) → DB(MariaDB) → 변경 적용·커밋·푸시 → 쿼리 실행 → 되돌리기),
+`scripts/e2e-newproject.cjs` (새 프로젝트).
 
 ## 원칙
 

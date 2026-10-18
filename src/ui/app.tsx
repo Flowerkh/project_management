@@ -723,6 +723,12 @@ export function App(props: { init?: Initial }) {
             준비됨 · 프로젝트 폴더를 불러오세요
           </>
         )}
+        {phase === 'new' && (
+          <>
+            <span class="dot idle" />
+            새 프로젝트 · 요구사항 → 계획 확정 → 생성 → 분석
+          </>
+        )}
         {phase === 'confirm' && folder && (
           <>
             <span class="dot" />
