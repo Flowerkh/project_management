@@ -13,7 +13,8 @@ export interface ProjectService {
   set(root: string, patch: Partial<Omit<ProjectSettings, 'root' | 'db'>>): Promise<ProjectSettings>;
 }
 
-export type NewHistoryEntry = Omit<HistoryEntry, 'id' | 'at'> & { at?: string };
+/** id를 미리 정하면(적용 전 백업 폴더 이름 등) 그 id로 남긴다 */
+export type NewHistoryEntry = Omit<HistoryEntry, 'id' | 'at'> & { at?: string; id?: string };
 
 export interface HistoryService {
   /** 최근 것부터. 나중에 붙은 갱신(진행 기록·되돌림 표시)을 합쳐서 돌려준다 */
@@ -36,7 +37,7 @@ export interface WorkService {
 
 export interface DbSelectRequest {
   root: string;
-  /** 비우면 개발 → QA → 운영 순으로 처음 있는 연결 (Claude 기본 조회 대상은 개발) */
+  /** 비우면 개발 DB만 (QA·운영은 지정했을 때만). 해당 환경 연결이 없으면 status 'none'과 있는 환경 목록 */
   env?: Env;
   connectionId?: string;
   sql: string;

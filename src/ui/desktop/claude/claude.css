@@ -1,0 +1,388 @@
+/* Claude 화면 (SCR-09 대화 패널 · POP-03 Claude 연결 · SCR-11 새 프로젝트). 접두어 cp- */
+
+/* ------------------------------------------------------------ 공통 조각 */
+.cp-avatar { flex: none; border-radius: 50%; background: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
+.cp-ibtn {
+  flex: none; width: 32px; height: 32px; padding: 0; border: none; background: transparent; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--ink2);
+}
+.cp-ibtn:hover:not(:disabled) { background: var(--surf2); }
+.cp-ibtn:disabled { opacity: 0.4; cursor: default; }
+.cp-ibtn.on { background: var(--acc-bg); }
+.cp-ibtn:focus-visible, .cp-chip-x:focus-visible, .cp-chip-add:focus-visible, .cp-seg button:focus-visible, .cp-send:focus-visible,
+.cp-tl.click:focus-visible, .cp-linkchip:focus-visible, .cp-ref:focus-visible, .cp-tlink:focus-visible {
+  outline: 2px solid var(--acc); outline-offset: 1px;
+}
+.cp-sep { color: var(--faint); }
+.cp-muted { color: var(--muted); }
+.cp-mono { font-family: var(--mono); }
+
+/* 상태 점 크기·모양은 desktop.css의 .cl-dot (RULE: 사용 가능·인증 필요·오프라인·꺼짐) */
+.cp-claude-btn { padding: 0 12px 0 11px; gap: 7px; }
+
+/* ------------------------------------------------------------ SCR-09 패널 */
+.cp-panel { outline: none; }
+/* 화면설계서 패널 폭(580/1348)에 맞춰 조금 넓힘: 1440에서 576px, 기본 맥락 칩 5개가 한 줄에 들어감 */
+.chat-panel.cp-panel { width: clamp(460px, 40vw, 640px); }
+.cp-head { position: relative; flex: none; display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); }
+.cp-head-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cp-title { font-size: 14.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-sub { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 0; overflow: hidden; }
+.cp-sub > span { flex: none; }
+.cp-sub .cp-proj { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cp-head-btns { flex: none; display: flex; gap: 2px; }
+
+/* 맥락 칩 */
+.cp-ctx { position: relative; flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line2); background: var(--surf); }
+.cp-ctx-label { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); margin-right: 3px; }
+.cp-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 1px 0 6px; border-radius: 6px; max-width: 220px;
+  border: 1px solid var(--line); background: #fff; font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap;
+}
+.cp-chip .t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp-chip.is-main { border-color: var(--acc-line); background: var(--acc-bg); }
+.cp-chip.is-pending { border-style: dashed; border-color: var(--acc-line); }
+.cp-chip.nox { padding-right: 8px; }
+.cp-chip-x { flex: none; width: 18px; height: 18px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; color: var(--muted); }
+.cp-chip-x:hover { background: var(--surf2); color: var(--ink); }
+.cp-chip-add { flex: none; width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center; border: 1px dashed #aeb8c4; border-radius: 6px; background: #fff; color: var(--ink2); }
+.cp-chip-add:hover { border-color: var(--acc); background: var(--acc-bg); }
+.cp-ctx-empty { font-size: 12px; color: var(--faint); }
+.cp-suggest { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 16px; border-bottom: 1px solid var(--line2); background: #fbfcff; font-size: 12.5px; color: var(--ink2); }
+.cp-suggest .nm { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* 대화 */
+.cp-body { position: relative; flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 10px 16px; }
+.cp-body > * { flex: none; }
+.cp-user { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.cp-bubble {
+  max-width: 86%; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--acc-bg); border: 1px solid var(--acc-line);
+  font-size: 13.5px; line-height: 1.55; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.cp-bubble.local { opacity: 0.85; }
+.cp-bubble-ctx { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 86%; }
+.cp-bubble-ctx span { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 6px; border-radius: 4px; background: var(--surf2); font-size: 11.5px; color: var(--ink2); }
+.cp-msg { position: relative; display: flex; gap: 10px; }
+.cp-msg-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 2px; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.cp-ind { margin-left: 34px; }
+
+/* Markdown */
+.cp-md { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cp-md p { margin: 0; }
+.cp-md ul, .cp-md ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+.cp-md li > ul, .cp-md li > ol { margin-top: 2px; }
+.cp-md .h { font-weight: 700; color: var(--ink); margin-top: 2px; }
+.cp-md .h.h1 { font-size: 15px; }
+.cp-md .h.h2 { font-size: 14.5px; }
+.cp-md .h.h3 { font-size: 14px; }
+.cp-md hr { border: none; border-top: 1px solid var(--line2); margin: 2px 0; width: 100%; }
+.cp-md blockquote { margin: 0; padding: 2px 0 2px 10px; border-left: 3px solid var(--line); color: var(--ink2); }
+.cp-md pre {
+  margin: 0; padding: 8px 10px; border-radius: 8px; background: #f6f8fa; border: 1px solid var(--line2); font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  overflow: auto; max-height: 360px; white-space: pre; color: var(--ink); position: relative;
+}
+.cp-md pre .lang { position: absolute; top: 4px; right: 8px; font-size: 10.5px; color: var(--faint); font-family: var(--sans); }
+.cp-md .tblw { overflow: auto; border: 1px solid var(--line); border-radius: 8px; max-width: 100%; }
+.cp-md table { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+.cp-md th { text-align: left; padding: 5px 8px; background: var(--surf); border-bottom: 1px solid var(--line); font-weight: 600; color: var(--muted); white-space: nowrap; }
+.cp-md td { padding: 5px 8px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+.cp-md tr:last-child td { border-bottom: none; }
+.cp-md a.ext { color: var(--acc-d); text-decoration: underline; text-decoration-color: var(--acc-line); cursor: pointer; }
+.cp-ident { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--ink); }
+.cp-ref {
+  display: inline; font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--acc-d); background: var(--surf); border: 1px solid var(--line2);
+  border-radius: 4px; padding: 0 4px; white-space: nowrap; cursor: pointer; line-height: 1.5;
+}
+.cp-ref:hover { border-color: var(--acc-line); background: var(--acc-bg); }
+.cp-tlink { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--acc-d); background: none; border: none; padding: 0; cursor: pointer; }
+.cp-tlink:hover { text-decoration: underline; }
+.cp-caret { display: inline-block; width: 7px; height: 15px; margin-left: 2px; vertical-align: -2px; background: var(--acc); border-radius: 1px; animation: cp-blink 1s steps(2, start) infinite; }
+@keyframes cp-blink { to { visibility: hidden; } }
+
+/* 영향 범위 칩 */
+.cp-impact { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cp-impact .k { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-right: 2px; }
+.cp-linkchip {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: #fff; color: var(--acc-d); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; max-width: 100%;
+}
+.cp-linkchip.mono { font-family: var(--mono); font-size: 11.5px; }
+.cp-linkchip:hover { border-color: var(--acc-line); background: var(--acc-bg); }
+.cp-linkchip.plain { color: var(--ink2); cursor: default; }
+.cp-linkchip.plain:hover { border-color: var(--line); background: #fff; }
+
+/* 작업 내역 */
+.cp-tools { display: flex; flex-direction: column; margin-left: 34px; padding: 2px 0 2px 10px; border-left: 2px solid var(--line2); align-self: flex-start; max-width: calc(100% - 34px); min-width: 0; }
+.cp-tl {
+  display: flex; align-items: center; gap: 7px; min-height: 22px; min-width: 0; padding: 0; border: none; background: none; text-align: left; font: inherit; color: inherit;
+  border-radius: 4px;
+}
+.cp-tl.click { cursor: pointer; }
+.cp-tl.click:hover { background: var(--surf); }
+.cp-tl .v { flex: none; font-size: 12.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.cp-tl .v.run { color: var(--acc); }
+.cp-tl .g { font-size: 12.5px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp-tl .g.mono { font-family: var(--mono); font-size: 12px; }
+.cp-tl .x { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cp-tl-rows { display: flex; flex-direction: column; padding: 1px 0 3px 20px; }
+.cp-tl-row { display: flex; align-items: center; gap: 7px; min-height: 21px; font-size: 12px; color: var(--ink2); min-width: 0; }
+.cp-tl-row .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp-tl-row .f { font-family: var(--mono); font-size: 11.5px; color: var(--acc-d); background: none; border: none; padding: 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: left; }
+.cp-tl-row .f:hover { text-decoration: underline; }
+.cp-tl-row .f.off { color: var(--ink2); cursor: default; }
+.cp-tl-row .f.off:hover { text-decoration: none; }
+.cp-tl-note { display: flex; align-items: center; gap: 5px; padding-left: 20px; min-height: 20px; font-size: 12px; color: var(--muted); }
+.cp-tl-sql { margin: 2px 0 4px 20px; padding: 6px 8px; border-radius: 6px; background: var(--surf); border: 1px solid var(--line2); font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; max-height: 160px; overflow: auto; color: var(--ink2); }
+
+/* 선택한 동작 · 모드 전환 */
+.cp-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cp-done {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--acc-line);
+  background: var(--acc-bg); font-size: 12.5px; font-weight: 600; color: var(--acc-d); white-space: nowrap;
+}
+.cp-time { font-size: 12px; color: var(--muted); }
+.cp-sys { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.cp-sys::before, .cp-sys::after { content: ''; flex: 1; height: 1px; background: var(--line2); }
+.cp-sys > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; max-width: 85%; overflow: hidden; text-overflow: ellipsis; }
+.cp-sys.err { color: var(--err); }
+
+/* 변경 카드 */
+.cp-change { margin-left: 34px; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--acc-line); border-radius: 10px; background: #fbfcff; }
+.cp-change-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cp-change-h b { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.cp-change-h .n { font-size: 12.5px; color: var(--ink2); white-space: nowrap; }
+.cp-change-files { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.cp-change-file { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; border: none; background: none; padding: 0; cursor: pointer; }
+.cp-change-file .nm { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-change-file:hover .nm { color: var(--acc-d); text-decoration: underline; }
+.cp-delta { flex: none; display: inline-flex; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.cp-delta .p { color: var(--ok); }
+.cp-delta .m { color: var(--err); }
+.btn.cp-b30 { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; gap: 6px; }
+
+/* 확인을 기다리는 계획 (ExitPlanMode) */
+.cp-plan-box { margin-left: 34px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; max-height: 320px; overflow: auto; font-size: 13px; line-height: 1.55; }
+.cp-plan-box .h { font-size: 12px; font-weight: 600; color: var(--muted); }
+
+/* 확인이 필요한 요청 (MSG-24 · MSG-42) */
+.cp-ask { margin-left: 34px; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--acc-line); border-radius: 10px; background: #f7f9fe; }
+.cp-ask-h { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.55; color: var(--ink); }
+.cp-ask-h .ic { flex: none; padding-top: 2px; }
+.cp-ask-cmd { font-family: var(--mono); font-size: 12px; padding: 4px 8px; border-radius: 6px; background: #fff; border: 1px solid var(--line2); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cp-ask-btns { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.cp-ask-sql { margin: 0; padding: 6px 8px; border-radius: 6px; background: #fff; border: 1px solid var(--line2); font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; max-height: 180px; overflow: auto; }
+
+/* 오류·알림 (대화 안) */
+.cp-err { margin-left: 34px; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.55; }
+.cp-err.err { background: var(--err-bg); color: var(--err); }
+.cp-err.warn { background: var(--warn-bg); color: var(--warn); }
+.cp-err.info { background: var(--acc-bg); color: var(--acc-d); }
+.cp-err .row1 { display: flex; align-items: flex-start; gap: 8px; }
+.cp-err .row1 .ic { flex: none; padding-top: 2px; }
+.cp-err .detail { font-size: 12px; opacity: 0.85; overflow-wrap: anywhere; }
+.cp-err .x { flex: none; margin: -4px -6px 0 0; width: 24px; height: 24px; padding: 0; border: none; background: transparent; border-radius: 4px; color: inherit; opacity: 0.7; display: flex; align-items: center; justify-content: center; }
+.cp-err .x:hover { opacity: 1; background: rgba(0, 0, 0, 0.06); }
+.cp-err .btns { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.cp-top-banner { flex: none; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--line2); background: #fff; }
+.cp-top-banner .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+
+/* 작업 사본 만드는 중 */
+.cp-progress { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--surf); font-size: 12.5px; color: var(--ink2); }
+.cp-progress .row { gap: 7px; }
+.cp-bar { height: 6px; border-radius: 3px; background: var(--surf2); overflow: hidden; }
+.cp-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--acc); transition: width 0.2s; }
+
+/* 빈 대화 */
+.cp-intro { display: flex; flex-direction: column; gap: 10px; padding: 6px 0 4px; }
+.cp-intro .q { display: flex; flex-direction: column; gap: 6px; margin-left: 34px; }
+.cp-intro .q button {
+  text-align: left; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 12.5px; color: var(--ink2); line-height: 1.45;
+}
+.cp-intro .q button:hover { border-color: var(--acc-line); background: var(--acc-bg); color: var(--ink); }
+.cp-loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; padding: 12px 2px; }
+.cp-jump {
+  position: sticky; bottom: 4px; align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 12px; border-radius: 14px;
+  border: 1px solid var(--line); background: #fff; box-shadow: 0 4px 14px rgba(31, 41, 51, 0.16); font-size: 12px; font-weight: 600; color: var(--ink2); z-index: 2;
+}
+
+/* 입력 */
+.cp-input-wrap { position: relative; flex: none; display: flex; flex-direction: column; gap: 6px; padding: 10px 14px 9px 14px; border-top: 1px solid var(--line); background: #fff; }
+.cp-input { display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 8px 12px; border: 1px solid #c9d0d8; border-radius: 10px; background: #fff; }
+.cp-input:focus-within { border-color: var(--acc); box-shadow: 0 0 0 3px rgba(36, 87, 214, 0.12); }
+.cp-ta {
+  width: 100%; min-height: 24px; max-height: 168px; resize: none; border: none; outline: none; padding: 2px 0 0 0; font-family: inherit; font-size: 13.5px;
+  line-height: 1.5; color: var(--ink); background: transparent; overflow-y: auto;
+}
+.cp-ta::placeholder { color: #8a95a3; }
+.cp-ta:disabled { color: var(--muted); }
+.cp-input-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cp-input-bar .hint { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp-input-bar .cnt { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cp-seg { flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--surf2); }
+.cp-seg button {
+  flex: none; height: 22px; padding: 0 10px; border: none; border-radius: 6px; font-size: 12.5px; white-space: nowrap; background: transparent; color: var(--muted); font-weight: 500;
+}
+.cp-seg button.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(31, 41, 51, 0.18); }
+.cp-seg button:disabled { cursor: default; opacity: 0.55; }
+.cp-seg button:not(.on):not(:disabled):hover { color: var(--ink); }
+.cp-send { flex: none; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 8px; background: var(--acc); }
+.cp-send:hover:not(:disabled) { background: var(--acc-d); }
+.cp-send:disabled { background: var(--surf2); cursor: default; }
+.btn.cp-stop { height: 32px; padding: 0 12px; font-size: 12.5px; gap: 6px; border-color: #edb3ac; }
+.cp-note { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); min-width: 0; }
+.cp-note span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* 대화 기록 팝오버 */
+.cp-pop {
+  position: absolute; top: 48px; right: 8px; z-index: 40; width: min(360px, calc(100% - 16px)); max-height: 440px; display: flex; flex-direction: column;
+  background: #fff; border: 1px solid #bcc5cf; border-radius: 10px; box-shadow: 0 16px 40px rgba(31, 41, 51, 0.22);
+}
+.cp-pop-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px 14px; border-bottom: 1px solid var(--line2); }
+.cp-pop-h b { font-size: 13.5px; }
+.cp-pop-list { overflow: auto; padding: 4px; display: flex; flex-direction: column; }
+.cp-pop-item { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-radius: 6px; border: none; background: none; text-align: left; width: 100%; }
+.cp-pop-item:hover { background: var(--surf); }
+.cp-pop-item.cur { background: var(--acc-bg); }
+.cp-pop-item .t { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0; }
+.cp-pop-item .t span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cp-pop-item .m { font-size: 11.5px; color: var(--muted); }
+.cp-pop-empty { padding: 16px; text-align: center; font-size: 12.5px; color: var(--muted); }
+
+/* ------------------------------------------------------------ POP-03 Claude 연결 */
+.modal.cp-dlg { width: min(960px, calc(100vw - 40px)); max-height: calc(100vh - 96px); overflow: hidden; }
+.cp-dlg-head { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 16px 14px 14px 22px; border-bottom: 1px solid var(--line); }
+.cp-dlg-head h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--ink); }
+.cp-dlg-head .s { font-size: 12.5px; color: var(--muted); }
+.cp-dlg-body { flex: 1; min-height: 0; overflow: auto; display: flex; gap: 28px; padding: 16px 22px 18px 32px; }
+.cp-dlg-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.cp-dlg-vsep { flex: none; width: 1px; background: var(--line2); }
+.cp-dlg-hsep { flex: none; height: 1px; background: var(--line2); }
+.cp-sec { display: flex; flex-direction: column; gap: 8px; }
+.cp-sec-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.cp-sec-h h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--ink); }
+.cp-radio { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.cp-radio input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cp-radio .o { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #9aa5b1; background: #fff; display: flex; align-items: center; justify-content: center; }
+.cp-radio.on .o { border-color: var(--acc); }
+.cp-radio.on .o::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--acc); }
+.cp-radio input:focus-visible + .o { box-shadow: 0 0 0 3px rgba(36, 87, 214, 0.25); }
+.cp-radio .l { font-size: 13.5px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.cp-radio.on .l { font-weight: 600; }
+.cp-radio .h { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.cp-auth-box { display: flex; align-items: center; gap: 6px; margin-left: 25px; padding: 6px 6px 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; min-width: 0; }
+.cp-auth-box .btn.cp-b28 { padding: 0 9px; }
+.cp-auth-box .lb { font-size: 12.5px; line-height: 1.35; color: var(--ink); min-width: 0; }
+.cp-auth-sub { display: flex; flex-direction: column; gap: 6px; margin-left: 25px; }
+.cp-lock-note { display: flex; align-items: flex-start; gap: 5px; margin-left: 25px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.cp-lock-note .ic { flex: none; padding-top: 2px; }
+.btn.cp-b28 { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; gap: 5px; }
+.cp-field-row { display: flex; align-items: center; gap: 8px; }
+.cp-field-row label { flex: none; width: 120px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cp-field-row .inp { flex: 1; min-width: 0; height: 30px; font-size: 12.5px; }
+.cp-field-row .inp.mono { font-family: var(--mono); }
+.cp-field-row .inp::placeholder { font-family: var(--sans); color: #8a95a3; }
+.cp-okchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-ok {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px 0 6px; border-radius: 15px; border: 1px solid var(--line2);
+  background: #fff; font-size: 12.5px; color: var(--ink2); white-space: nowrap;
+}
+.cp-ok .c { flex: none; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--ok-bg); }
+.cp-ok.fail { border-color: #f0c4be; }
+.cp-ok.fail .c { background: var(--err-bg); }
+.cp-ok.wait .c { background: var(--surf2); }
+.cp-ok b { font-weight: 600; color: var(--ink); }
+.cp-cli { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); min-width: 0; flex-wrap: wrap; }
+.cp-cli .p { font-family: var(--mono); font-size: 11.5px; color: var(--ink2); overflow-wrap: anywhere; }
+.cp-cli .p.auto { font-family: var(--sans); font-size: 12px; color: var(--muted); }
+.cp-sec-h .at { margin-left: auto; font-size: 12px; color: var(--muted); }
+.cp-linkbtn { border: none; background: none; padding: 0; font-size: 12px; font-weight: 600; color: var(--acc-d); cursor: pointer; white-space: nowrap; }
+.cp-linkbtn:hover { text-decoration: underline; }
+.cp-linkbtn.danger { color: var(--err); }
+.cp-send-box { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surf); }
+.cp-send-box .t { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.cp-send-box ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.cp-send-box li { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.5; color: var(--ink2); }
+.cp-send-box li .ic { flex: none; padding-top: 2px; }
+.cp-perm { display: flex; flex-direction: column; gap: 9px; }
+.cp-prow { display: flex; align-items: center; gap: 14px; }
+.cp-prow.top { align-items: flex-start; }
+.cp-prow .k { flex: none; width: 62px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.cp-prow.top .k { padding-top: 5px; }
+.cp-prow .v { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12.5px; line-height: 1.5; color: var(--ink2); }
+.cp-prow .mode { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.cp-rchip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 4px 0 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--surf); font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--ink); }
+.cp-rchip button { flex: none; width: 20px; height: 20px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; color: var(--muted); }
+.cp-rchip button:hover { background: var(--surf2); color: var(--ink); }
+.cp-addchip {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 8px; border-radius: 6px; border: 1px dashed #aeb8c4; background: #fff;
+  font-size: 12.5px; font-weight: 600; color: var(--ink2);
+}
+.cp-addchip:hover { border-color: var(--acc); background: var(--acc-bg); }
+.cp-addinp { height: 28px; width: 170px; padding: 0 8px; border: 1px solid var(--acc); border-radius: 6px; font-family: var(--mono); font-size: 12px; outline: none; box-shadow: 0 0 0 3px rgba(36, 87, 214, 0.12); }
+.cp-check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.cp-check input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--acc); flex: none; }
+.cp-check .l { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.cp-check .h { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 2px; }
+.cp-dlg-foot { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 16px 12px 22px; border-top: 1px solid var(--line); background: var(--surf); border-radius: 0 0 12px 12px; }
+.cp-dlg-foot .msg { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.5; color: var(--ink2); }
+.cp-dlg-foot .msg .ic { flex: none; padding-top: 2px; }
+.cp-dlg-foot .btn { height: 34px; font-size: 13px; }
+.cp-inline-err { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--err-bg); color: var(--err); font-size: 12.5px; line-height: 1.5; }
+.cp-inline-err.info { background: var(--acc-bg); color: var(--acc-d); }
+.cp-inline-err .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------ SCR-11 새 프로젝트 */
+.cp-np { height: 100%; min-height: 620px; display: flex; flex-direction: column; gap: 12px; padding: 16px 22px; }
+.cp-np-title { flex: none; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cp-np-title h2 { margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.cp-np-title .fd { font-family: var(--mono); font-size: 13.5px; font-weight: 500; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cp-np-title .at { margin-left: auto; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.cp-np-steps { flex: none; display: flex; align-items: center; gap: 14px; padding: 12px 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.cp-hstep { flex: none; display: flex; align-items: center; gap: 10px; }
+.cp-hstep .c { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--muted); border: 1.5px solid #c3cad3; }
+.cp-hstep.done .c { background: var(--ok-bg); border-color: var(--ok-bg); }
+.cp-hstep.run .c { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 700; }
+.cp-hstep .tx { display: flex; flex-direction: column; gap: 1px; }
+.cp-hstep .l { font-size: 14px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.cp-hstep.done .l { font-weight: 600; color: var(--ink); }
+.cp-hstep.run .l { font-weight: 700; color: var(--acc-d); }
+.cp-hstep .s { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cp-hline { flex: 1; min-width: 24px; height: 2px; border-radius: 1px; background: #c3cad3; }
+.cp-hline.done { background: var(--ok); }
+.cp-np-cols { flex: 1; min-height: 0; display: flex; gap: 14px; align-items: stretch; }
+.cp-np-left { width: 400px; flex: none; display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; }
+.cp-np-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.cp-np-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; min-width: 0; }
+.cp-np-card-t { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-height: 22px; }
+.cp-np-card-t h3 { margin: 0; font-size: 15px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.cp-np-card-t .sub { font-size: 12.5px; color: var(--muted); }
+.cp-np-card-t .right { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.cp-info-row { display: flex; gap: 10px; padding: 4px 0; }
+.cp-info-row .k { flex: none; width: 70px; font-size: 12.5px; font-weight: 600; color: var(--muted); padding-top: 1px; }
+.cp-info-row .v { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+.cp-info-row .v .mono { font-family: var(--mono); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.cp-info-row select.inp { height: 30px; font-size: 12.5px; padding: 0 6px; max-width: 100%; }
+.cp-req { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.65; color: var(--ink); }
+.cp-req-empty { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+.cp-plan-item { display: flex; align-items: flex-start; gap: 9px; padding: 4px 0; border-bottom: 1px solid var(--surf2); }
+.cp-plan-item:last-child { border-bottom: none; }
+.cp-plan-item .ic { flex: none; padding-top: 2px; }
+.cp-plan-item .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cp-plan-item .t { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.cp-plan-item.wait .t { color: var(--muted); }
+.cp-plan-item .s { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.cp-plan-item .r { flex: none; font-size: 12px; color: var(--muted); }
+.cp-np-log { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 16px; }
+.cp-np-log .cp-np-card-t { flex: none; margin-bottom: 12px; }
+.cp-np-log-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
+.cp-np-log-body > * { flex: none; }
+.cp-np-input { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.cp-np-input .box { display: flex; align-items: flex-end; gap: 8px; padding: 6px 8px 6px 12px; border: 1px solid #c9d0d8; border-radius: 10px; }
+.cp-np-input .box:focus-within { border-color: var(--acc); box-shadow: 0 0 0 3px rgba(36, 87, 214, 0.12); }
+.cp-np-input .cp-ta { padding: 6px 0 4px; }
+.cp-np-prog { margin-left: 34px; display: flex; align-items: center; gap: 10px; }
+.cp-np-prog .cp-bar { flex: 1; }
+.cp-np-prog .t { flex: none; font-size: 12px; color: var(--ink2); }
+.cp-np-finish { margin-left: 34px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid #b7dfc8; border-radius: 10px; background: #f3faf6; font-size: 13px; color: var(--ink); }
+.cp-np-empty { display: flex; flex-direction: column; gap: 8px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.cp-np-empty ol { margin: 0; padding-left: 18px; }

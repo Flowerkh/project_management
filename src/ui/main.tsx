@@ -40,6 +40,13 @@ function initialFromUrl(): Initial {
     if (p.has('chat')) init.chat = true;
     const dm = p.get('dmodal');
     if (dm === 'claude' || dm === 'project') init.deskModal = dm;
+    // &noroot: ZIP·결과 파일로 연 것처럼 원본 폴더 경로 없음 (Claude [수정 진행] 불가)
+    if (p.has('noroot')) init.folder = mockFolder();
+    // &phase=new: SCR-11 새 프로젝트 (나머지 인자는 mock/claude.ts)
+    if (p.get('phase') === 'new') {
+      init.phase = 'new';
+      init.folder = undefined;
+    }
   }
   const v = p.get('viewer');
   if (v) {

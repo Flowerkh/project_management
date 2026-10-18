@@ -35,6 +35,24 @@ SHOTS = {
     'desk-claude': '?mock=1&desk&dmodal=claude',
     'desk-changes': '?mock=1&desk&view=changes:W1',
     'desk-history': '?mock=1&desk&view=history',
+    # 작업 사본·작업 이력 (V): 코드 적용 기록 선택, Claude 패널을 연 좁은 본문
+    'desk-history-apply': '?mock=1&desk&view=history:hm-1102',
+    'desk-history-rollback': '?mock=1&desk&view=history:hm-1612',
+    'desk-changes-chat': '?mock=1&desk&chat&view=changes:W1',
+    # Claude 화면 (C2): 오류·연결 상태·원본 없음, POP-03 꺼짐·CLI 없음, SCR-11 단계별
+    'desk-chat-auth': '?mock=1&desk&chat&view=screen:S022&cerr=auth',
+    'desk-chat-limit': '?mock=1&desk&chat&view=screen:S022&cerr=limit',
+    'desk-chat-login': '?mock=1&desk&chat&view=screen:S022&cstate=login',
+    'desk-chat-noroot': '?mock=1&desk&chat&view=screen:S022&noroot',
+    'desk-claude-off': '?mock=1&desk&dmodal=claude&cstate=off',
+    'desk-claude-missing': '?mock=1&desk&dmodal=claude&cstate=missing',
+    'desk-new': '?mock=1&desk&phase=new',
+    'desk-new-plan': '?mock=1&desk&phase=new&nstep=plan',
+    'desk-new-gen': '?mock=1&desk&phase=new&nstep=gen',
+    'desk-new-done': '?mock=1&desk&phase=new&nstep=done',
+    # DB (D): 대화의 변경 쿼리 카드 [실행] → 확인 창(MSG-32), POP-04 [DB 추가]
+    'desk-query': '?mock=1&desk&chat&view=screen:S022',
+    'desk-project-add': '?mock=1&desk&dmodal=project',
 }
 
 CHECK_JS = r"""
@@ -85,6 +103,12 @@ def main(names):
             if n == 'search':
                 pg.fill('input[aria-label="트리 검색"]', 'order')
                 pg.wait_for_timeout(250)
+            if n == 'desk-query':
+                pg.click('.db-qcard button:has-text("실행")')
+                pg.wait_for_timeout(300)
+            if n == 'desk-project-add':
+                pg.click('button:has-text("DB 추가")')
+                pg.wait_for_timeout(300)
             pg.evaluate('document.fonts.ready')
             issues = pg.evaluate(CHECK_JS)
             shot = os.path.join(OUT, f'{n}.png')

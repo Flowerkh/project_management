@@ -61,6 +61,8 @@ export interface DbConnection {
   port: number;
   /** Oracle 서비스 이름(또는 SID) */
   service?: string;
+  /** (Oracle) service가 SID임. '('로 시작하는 service는 연결 설명자 그대로 */
+  sid?: boolean;
   /** MySQL·MariaDB 데이터베이스 */
   database?: string;
   user: string;
@@ -205,6 +207,8 @@ export interface WorkCopy {
   base?: { kind: VcsInfo['kind']; branch?: string; head?: string; dirty?: number };
   /** 값을 가린 접속 정보 파일 수 (Claude가 비밀 값을 보지 못함) */
   redacted?: number;
+  /** (work.list) 아직 적용하지 않은 변경 파일 수 */
+  changed?: number;
 }
 
 export interface DiffLine {
@@ -219,6 +223,8 @@ export interface DiffHunk {
   oldStart: number;
   newStart: number;
   lines: DiffLine[];
+  /** 바뀐 곳을 감싼 함수·메서드 이름(예: 'updateDlvyInfo()') 또는 매퍼 SQL id */
+  fn?: string;
 }
 
 export interface FileChange {
@@ -235,6 +241,10 @@ export interface FileChange {
   blocked?: string;
   /** 작업 사본을 만들 때 원본에 이미 커밋 안 된 변경이 있던 파일 (커밋하면 그 변경도 함께 들어감) */
   dirtyBase?: boolean;
+  /** 원본 인코딩이 UTF-8이 아님 (작업 사본은 UTF-8, 적용할 때 원래 인코딩으로 저장) */
+  encoding?: 'EUC-KR' | 'UTF-16';
+  /** 작업 사본에서 비밀 값을 가린 파일 (적용할 때 가린 값은 원본 값으로 되돌림) */
+  redacted?: boolean;
 }
 
 export interface ApplyRequest {
@@ -286,6 +296,15 @@ export interface HistoryEntry {
   revertSql?: string;
   /** 진행 기록 (적용 → 커밋 → 푸시 → 다시 분석 …) */
   steps?: { at: string; label: string; detail?: string; ok: boolean }[];
+  /** (코드) 적용할 때의 형상관리 도구 */
+  vcs?: VcsInfo['kind'];
+  /** (코드) 변경을 만든 작업 사본 */
+  workId?: string;
+  workPath?: string;
+  /** (코드) 커밋 메시지 첫 줄 */
+  message?: string;
+  /** (코드) 확인 창에서 고른 커밋·푸시 (실패하면 [다시 시도]가 이대로 다시 함) */
+  want?: { commit: boolean; push: boolean };
 }
 
 export interface RevertResult {
@@ -332,6 +351,20 @@ export interface ClaudeStatus {
   authLabel?: string;
   checkedAt: string;
   message?: string;
+  /** (POP-03 연결 확인) 인증 시험 요청에 걸린 시간(ms). 연동이 꺼져 있어도 recheck면 확인해 채움 */
+  authMs?: number;
+  /** 문제의 종류 (state가 login·offline·missing일 때. 결제 문제 MSG-30·사용 한도 MSG-23 구분용) */
+  code?: ClaudeErrorCode;
+  /** (POP-03 ② 연결 확인) 항목별 결과: CLI 설치 → 인터넷 → 인증. ok null = 확인하지 않음(앞 단계 실패·건너뜀) */
+  checks?: { cli: ClaudeCheck; network: ClaudeCheck; auth: ClaudeCheck };
+}
+
+export interface ClaudeCheck {
+  ok: boolean | null;
+  /** 확인 내용·실패 원인 (예: '2.1.302 · C:\…\claude.exe', 'api.anthropic.com 연결됨 (120ms)') */
+  message?: string;
+  ms?: number;
+  code?: ClaudeErrorCode;
 }
 
 export type ChatMode = 'plan' | 'edit';
@@ -353,11 +386,14 @@ export type ChatItem =
       items: { kind: 'read' | 'search' | 'edit' | 'command' | 'db' | 'other'; label: string; file?: string; line?: number }[];
       at: string;
     }
-  | { id: string; type: 'changes'; workId: string; files: number; plus: number; minus: number; paths: string[]; at: string }
+  /** stats: 그때의 파일별 줄 수 (있으면 변경 카드의 파일 칩에 +a −b 표시) */
+  | { id: string; type: 'changes'; workId: string; files: number; plus: number; minus: number; paths: string[]; at: string; stats?: { path: string; plus: number; minus: number }[] }
   | { id: string; type: 'query'; card: QueryCard; at: string }
   | { id: string; type: 'select'; env: Env; db: string; sql: string; rows: number; maskedColumns: string[]; ms: number; at: string }
-  | { id: string; type: 'mode'; mode: ChatMode; at: string }
-  | { id: string; type: 'notice'; text: string; at: string }
+  /** via: plan [수정 진행]·[계획 확정]으로 바뀜(화면에 '수정 진행함' 표시) / user 입력창의 모드 단추 */
+  | { id: string; type: 'mode'; mode: ChatMode; at: string; via?: 'plan' | 'user' }
+  /** msg: 메시지 정의 번호(예: DB 연결 실패 'MSG-36')와 vars 값. 있으면 화면이 그 문구·버튼으로 보여 줌 */
+  | { id: string; type: 'notice'; text: string; at: string; msg?: string; vars?: Record<string, string | number> }
   | { id: string; type: 'error'; code: ClaudeErrorCode; message: string; at: string };
 
 /** 사용자 결정이 필요한 요청 (셸 명령 MSG-24, 운영 DB 조회 MSG-42) */
@@ -366,9 +402,14 @@ export interface PendingRequest {
   /** command 셸 명령(MSG-24) / prod-select 운영 DB 조회(MSG-42) / plan 계획 모드에서 Claude가 수정을 시작하려 함 ([수정 진행]) */
   kind: 'command' | 'prod-select' | 'plan';
   title: string;
+  /** command: 실행할 명령 그대로 / prod-select: MSG-42 문구(값을 채움) / plan: Claude가 낸 계획(Markdown) */
   detail: string;
   sql?: string;
   db?: string;
+  /** (prod-select) 조회 대상 환경·최대 행 수·개인정보 가림 (운영 외에 '매번 확인'으로 설정한 개발·QA도 같은 요청) */
+  env?: Env;
+  maxRows?: number;
+  mask?: boolean;
 }
 
 export interface Conversation {
@@ -436,6 +477,8 @@ export interface DesktopApi {
   'history.revert'(root: string, entryId: string, opts: { commit: boolean }): RevertResult;
   'history.exportCsv'(root: string): string | false;
   'history.diff'(root: string, entryId: string): FileChange[];
+  /** 적용한 뒤 바뀐 내용 (적용 직후 → 지금 원본). MSG-40 [차이 보기] */
+  'history.drift'(root: string, entryId: string): FileChange[];
   /** 진행 기록 추가 (화면이 다시 분석한 결과 등) */
   'history.step'(root: string, entryId: string, step: { label: string; detail?: string; ok: boolean }): HistoryEntry | null;
   /** 실패한 커밋·푸시 다시 시도 (MSG-25) */
@@ -485,4 +528,6 @@ export type DesktopEvent =
   | { type: 'claude.status'; status: ClaudeStatus }
   | { type: 'work.progress'; root: string; done: number; total: number; message?: string }
   | { type: 'history.added'; root: string; entry: HistoryEntry }
+  /** 기록 갱신 (커밋·푸시 결과, 진행 기록 추가, 되돌림 표시) */
+  | { type: 'history.updated'; root: string; entry: HistoryEntry }
   | { type: 'db.card'; card: QueryCard };
