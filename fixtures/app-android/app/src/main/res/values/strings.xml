@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">쇼핑몰</string>
+    <string name="title_home">홈</string>
+    <string name="title_orders">주문 내역</string>
+    <string name="title_profile">내 정보</string>
+    <string name="title_product_detail">상품 상세</string>
+    <string name="title_order_detail">주문 상세</string>
+    <string name="title_notice">공지사항</string>
+    <string name="logout">로그아웃</string>
+</resources>

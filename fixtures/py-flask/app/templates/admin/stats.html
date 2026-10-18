@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}권한 통계{% endblock %}
+{% block content %}{% for r in rows %}<p>{{ r[0] }} {{ r[1] }}</p>{% endfor %}{% endblock %}

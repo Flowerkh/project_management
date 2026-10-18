@@ -1,0 +1,11 @@
+<!doctype html>
+<html>
+<head><title>대시보드</title></head>
+<body>
+<p>품목 {{ count }}개</p>
+<a href="{{ url_for('read_heroes') }}">영웅 목록</a>
+<script>
+fetch('/api/v1/items/').then(r => r.json());
+</script>
+</body>
+</html>

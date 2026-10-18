@@ -24,6 +24,8 @@ interface Reach {
   steps: FlowStep[];
   files: Map<string, Layer>;
   sql: Set<string>;
+  /** 앱·클라이언트 코드가 부른 서버 API (정규화 URL → 화면 calls 항목) */
+  http: Map<string, ScreenResult['calls'][number]>;
 }
 
 const LAYER_OF_KIND: Record<CodeUnit['kind'], Layer> = {
@@ -31,7 +33,7 @@ const LAYER_OF_KIND: Record<CodeUnit['kind'], Layer> = {
 };
 
 function emptyReach(): Reach {
-  return { tables: new Map(), steps: [], files: new Map(), sql: new Set() };
+  return { tables: new Map(), steps: [], files: new Map(), sql: new Set(), http: new Map() };
 }
 
 function addTables(r: Reach, sql: SqlFact): void {
@@ -60,6 +62,7 @@ function mergeReach(into: Reach, from: Reach): void {
   }
   for (const [f, l] of from.files) if (!into.files.has(f)) into.files.set(f, l);
   from.sql.forEach((s) => into.sql.add(s));
+  for (const [k, c] of from.http) if (!into.http.has(k)) into.http.set(k, c);
 }
 
 /** URL 정규화: 호스트·쿼리·해시 제거, 끝 / 제거, 소문자 */
@@ -162,6 +165,8 @@ export function link(facts: Facts): Linked {
   }
 
   const memo = new Map<string, Reach>();
+  /** 앱 화면 진입 메서드 (views = [화면 파일]) */
+  const appEntries = new Set<MethodUnit>();
   function reach(unit: CodeUnit, m: MethodUnit, depth = 0, stack = new Set<string>()): Reach {
     const key = `${unit.id}#${m.name}#${m.line}`;
     const cached = memo.get(key);
@@ -212,12 +217,28 @@ export function link(facts: Facts): Linked {
         if (units.size === 1 && c.method.length >= 5) methods = cand;
       }
       if (unit.kind === 'controller' && !exact) methods = methods.filter((x) => x.unit.kind !== 'controller' || x.unit.id === unit.id);
+      // 다른 앱 화면의 진입 메서드(탭 묶음·호스트 화면이 품은 화면)는 그 화면 몫
+      methods = methods.filter((x) => !appEntries.has(x.m) || x.unit.id === unit.id);
       for (const x of methods) {
         const sub = reach(x.unit, x.m, depth + 1, stack);
         mergeReach(r, sub);
         if (!childSteps.length && sub.tables.size) childSteps = sub.steps;
       }
       targets = [];
+    }
+    // 앱·클라이언트가 부르는 서버 API → 같은 폴더에 서버 코드가 있으면 그 처리 메서드까지 따라감
+    for (const h of m.httpCalls ?? []) {
+      const key = `${h.method.toUpperCase()} ${normUrl(h.url)}`;
+      if (r.http.has(key)) continue;
+      const hits = matchApi(h.url, h.method);
+      const cr = emptyReach();
+      for (const hit of hits) {
+        const sub = reach(hit.unit, hit.m, depth + 1, stack);
+        mergeReach(cr, sub);
+        if (!childSteps.length && sub.tables.size) childSteps = sub.steps;
+      }
+      mergeReach(r, cr);
+      r.http.set(key, { url: `${h.method.toUpperCase()} ${h.url}`, kind: 'fetch', ...(hits[0] ? { handler: `${hits[0].unit.name}.${hits[0].m.name}()` } : {}), tables: tableList(cr) });
     }
     if (childSteps.length) r.steps.push(...childSteps);
     stack.delete(key);
@@ -261,6 +282,48 @@ export function link(facts: Facts): Linked {
       if (mm.length) hits = mm;
     }
     return hits;
+  }
+  /** 앱이 부르는 API → 서버 라우트. 기준 URL(baseUrl)을 몰라 앞 경로가 빠졌으면 끝 경로가 하나로 맞는 라우트 */
+  function matchApi(url: string, method?: string): RouteRef[] {
+    const exact = matchRoutes(url, method);
+    if (exact.length || !routes.length) return exact;
+    const segs = normUrl(url).split('/').filter(Boolean);
+    if (!segs.length) return [];
+    const isParam = (s: string) => /^\{[^}]*\}$|^:\w+\??$|^<[^>]+>$|^\*$/.test(s);
+    let best: RouteRef[] = [];
+    let bestDrop = 99;
+    for (const r of routes) {
+      const rs = r.norm.split('/').filter(Boolean);
+      const drop = rs.length - segs.length;
+      if (drop < 0 || drop > bestDrop) continue;
+      let literal = 0;
+      let ok = true;
+      for (let i = 0; i < segs.length && ok; i++) {
+        const a = rs[drop + i];
+        const b = segs[i];
+        if (isParam(a) || isParam(b)) continue;
+        if (a !== b) ok = false;
+        else literal++;
+      }
+      if (!ok || !literal || (literal < 2 && segs.join('').length < 4)) continue;
+      if (drop < bestDrop) {
+        best = [];
+        bestDrop = drop;
+      }
+      best.push(r);
+    }
+    if (method && best.length > 1) {
+      const mm = best.filter((h) => h.route.method === '*' || h.route.method.toUpperCase() === method.toUpperCase());
+      if (mm.length) best = mm;
+    }
+    // 서로 다른 경로가 여럿 맞으면 추측하지 않음
+    if (new Set(best.map((b) => b.norm)).size === 1) return best;
+    // 앱 쪽 URL에 게이트웨이 접두어(/api 등)가 더 붙은 경우
+    for (let k = 1; k <= Math.min(2, segs.length - 1); k++) {
+      const hits = matchRoutes(`/${segs.slice(k).join('/')}`, method);
+      if (hits.length && new Set(hits.map((b) => b.norm)).size === 1) return hits;
+    }
+    return [];
   }
 
   // ------------------------------------------------------------ 뷰 이름 → 화면 파일
@@ -318,6 +381,7 @@ export function link(facts: Facts): Linked {
       for (const vn of m.views) {
         const v = resolveView(vn);
         if (v) push(renderers, v.file, { unit: u, m });
+        if (v && v.kind === 'app' && !v.fragment) appEntries.add(m);
       }
     }
   }
@@ -360,7 +424,7 @@ export function link(facts: Facts): Linked {
     const files = new Map<string, { layer: Layer; note?: string }>();
     files.set(v.file, { layer: 'VIEW' });
     const evidence: Evidence[] = [];
-    if (v.titleLine) evidence.push({ file: v.file, line: v.titleLine, text: v.title });
+    if (v.titleLine) evidence.push({ file: v.titleFile ?? v.file, line: v.titleLine, text: v.title });
     const urls: string[] = [];
     let flow: FlowStep[] = [{ layer: 'VIEW', file: v.file, symbol: f.name }];
     let score = 0;
@@ -416,7 +480,9 @@ export function link(facts: Facts): Linked {
       seenCall.add(n);
       const hits = matchRoutes(u.url, u.method);
       if (!hits.length) {
-        if (!/\.(js|css|png|jpg|gif|ico|svg|pdf|xlsx?|hwp|zip)$/i.test(n) && n !== '/' && !n.startsWith('/static') && !n.startsWith('/resources') && !n.startsWith('/images')) {
+        // 앱 화면(웹뷰 주소 등)은 서버 코드가 없어도 화면이 여는 주소로 남김
+        if (v.kind === 'app') calls.push({ url: u.url, kind: u.kind, tables: [] });
+        if ((v.kind !== 'app' || routes.length) && !/\.(js|css|png|jpg|gif|ico|svg|pdf|xlsx?|hwp|zip)$/i.test(n) && n !== '/' && !n.startsWith('/static') && !n.startsWith('/resources') && !n.startsWith('/images')) {
           if (!unresolvedUrls.has(n)) unresolvedUrls.set(n, { file: u.file, line: u.line });
         }
         continue;
@@ -443,6 +509,12 @@ export function link(facts: Facts): Linked {
       });
       score = Math.max(score, 1);
     }
+    // 화면 코드(뷰모델·리포지토리 등)가 부르는 서버 API
+    for (const [k, c] of total.http) {
+      if (seenCall.has(k)) continue;
+      seenCall.add(k);
+      calls.push(c);
+    }
     for (const [fid, layer] of total.files) if (!files.has(fid)) files.set(fid, { layer });
     if (total.tables.size && score >= 1) score = 2;
     const estimated = [...total.tables.values()].some((t) => t.estimated) || [...total.sql].some((id) => sqlById.get(id)?.dynamic);
@@ -454,7 +526,7 @@ export function link(facts: Facts): Linked {
       name,
       url: urls[0],
       urls,
-      group: groupOf(urls[0], f.path),
+      group: v.group ?? groupOf(urls[0], f.path),
       view: v.file,
       files: [...files.entries()].map(([file, x]) => ({ file, layer: x.layer, ...(x.note ? { note: x.note } : {}) })),
       tables: tableList(total),
@@ -465,6 +537,7 @@ export function link(facts: Facts): Linked {
       evidence,
       notInMenu: false,
       ...(f.project ? { project: f.project } : {}),
+      ...(v.platform ? { platform: v.platform } : {}),
     };
     screens.push(scr);
     for (const r of rend) for (const rt of r.m.routes) {
@@ -564,6 +637,8 @@ export function link(facts: Facts): Linked {
       const s = sqlById.get(id);
       if (s) addTables(r, s);
     }
+    // 스크립트 배치는 실행 파일 자체의 SQL(파이썬 cursor.execute 등)도 그 배치의 것
+    if (['python', 'node', 'shell', 'batch', 'powershell'].includes(b.kind)) for (const s of sqlByFile.get(b.entry) ?? []) addTables(r, s);
     for (const c of b.calls) {
       if (c.kind === 'sql-file' || c.kind === 'script') {
         const tf = c.file ? fileById.get(c.file) : fileForTarget(c.target);
@@ -623,19 +698,26 @@ export function link(facts: Facts): Linked {
     const prog = s.command.split(/\s+/).find((w) => /[\w/.-]+\.(sh|bat|cmd|ps1|py|jar|js)\b/.test(w)) ?? s.command.split(/\s+/)[0];
     const target = fileForTarget(prog);
     if (target && facts.batches.some((b) => b.entry === target.id)) return;
+    // 실행 대상 파일(python x.py 등)의 SQL 이 쓰는 테이블
+    const tr = emptyReach();
+    if (target) for (const q of sqlByFile.get(target.id) ?? []) addTables(tr, q);
     batches.push({
       id: `B${String(++bseq).padStart(3, '0')}`,
       name: nameFromPath(prog),
-      kind: 'shell',
+      kind: /\.py$/i.test(target?.name ?? prog) ? 'python' : 'shell',
       group: '스케줄만 있음',
       entry: target?.id ?? s.evidence.file,
       schedule: { expr: s.expr, text: cronText(s.expr), evidence: s.evidence },
-      flow: [{ layer: 'SCHEDULE', file: s.evidence.file, symbol: s.expr, line: s.evidence.line }, { layer: 'BATCH', symbol: prog }],
-      tables: [],
-      files: [s.evidence.file],
+      flow: [
+        { layer: 'SCHEDULE', file: s.evidence.file, symbol: s.expr, line: s.evidence.line },
+        { layer: 'BATCH', ...(target ? { file: target.id } : {}), symbol: prog },
+        ...[...tr.tables.values()].slice(0, 6).map((t): FlowStep => ({ layer: 'TABLE', symbol: t.name })),
+      ],
+      tables: tableList(tr),
+      files: target ? [s.evidence.file, target.id] : [s.evidence.file],
       logs: [],
       role: '',
-      confidence: '낮음',
+      confidence: tr.tables.size ? '보통' : '낮음',
     });
   });
 
@@ -804,13 +886,15 @@ function buildMenus(
           }
         }
       }
+      // 앱 탭·드로어 메뉴: 화면 파일로 연결
+      if (f.view) for (const s of screens) if (s.view === f.view && s.kind !== 'api' && !linked.includes(s.id)) linked.push(s.id);
       out.push({ id: keyToId.get(f.key)!, name: f.name, ...(parent ? { parent } : {}), ...(f.url ? { url: f.url } : {}), ...(f.order !== undefined ? { order: f.order } : {}), depth: 0, screens: linked, source: f.source, evidence: f.evidence, estimated: false, tables: [] });
     }
   } else {
     // URL 경로로 추정한 메뉴
     const groups = new Map<string, ScreenResult[]>();
     for (const s of screens) {
-      if (s.kind !== 'page' || !s.url) continue; // 주소 없는 화면은 메뉴로 열 수 없음
+      if (s.kind !== 'page' || !s.url || s.platform) continue; // 주소 없는 화면은 메뉴로 열 수 없음 (앱 화면은 앱 메뉴로만)
       if (!groups.has(s.group)) groups.set(s.group, []);
       groups.get(s.group)!.push(s);
     }

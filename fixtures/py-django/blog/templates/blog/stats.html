@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}분류별 통계{% endblock %}
+{% block content %}<table>{% for name, cnt in rows %}<tr><td>{{ name }}</td><td>{{ cnt }}</td></tr>{% endfor %}</table>{% endblock %}

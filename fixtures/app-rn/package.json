@@ -1,0 +1,16 @@
+{
+  "name": "shop-rn",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.74.1",
+    "@react-navigation/native": "^6.1.17",
+    "@react-navigation/native-stack": "^6.9.26",
+    "@react-navigation/bottom-tabs": "^6.5.20",
+    "axios": "^1.6.8",
+    "react-native-config": "^1.5.1",
+    "react-native-sqlite-storage": "^6.0.1",
+    "react-native-webview": "^13.8.6"
+  }
+}

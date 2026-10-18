@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+<head><title>{% block title %}{% endblock %} - 마이사이트</title></head>
+<body>
+<nav>
+  <a href="{% url 'home' %}">홈</a>
+  <a href="{% url 'blog:post_list' %}">블로그</a>
+  <a href="{% url 'shop:product_list' %}">상점</a>
+</nav>
+{% include 'includes/sidebar.html' %}
+{% block content %}{% endblock %}
+</body>
+</html>

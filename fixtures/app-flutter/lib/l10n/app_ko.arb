@@ -1,0 +1,5 @@
+{
+  "@@locale": "ko",
+  "productDetail": "상품 상세",
+  "@productDetail": { "description": "상품 상세 화면 제목" }
+}

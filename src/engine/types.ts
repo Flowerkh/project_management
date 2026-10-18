@@ -153,6 +153,8 @@ export interface MethodUnit {
   statements: string[];
   /** 돌려주는 화면 이름 (Spring view name, Laravel view('a.b'), CI load->view) */
   views: string[];
+  /** 앱·클라이언트 코드가 부르는 서버 API (Retrofit·OkHttp·fetch·axios·dio·http). link가 서버 라우트와 잇는다 */
+  httpCalls?: { method: string; url: string; line: number }[];
   /** 리다이렉트 URL */
   redirects?: string[];
   /** @Scheduled(cron) 등 실행 주기 */
@@ -164,9 +166,15 @@ export interface MethodUnit {
 /** 화면 파일 (JSP·PHP 페이지·템플릿·HTML) */
 export interface ViewFact {
   file: string;
-  kind: 'jsp' | 'php' | 'template' | 'html' | 'vue' | 'react' | 'other';
+  kind: 'jsp' | 'php' | 'template' | 'html' | 'vue' | 'react' | 'app' | 'other';
+  /** 앱 화면(kind 'app')의 플랫폼 */
+  platform?: 'Android' | 'React Native' | 'Flutter';
+  /** 화면 트리 그룹을 분석기가 정한 경우 (앱 화면: 기능 폴더) */
+  group?: string;
   title?: string;
   titleLine?: number;
+  /** 제목이 화면 파일 밖(strings.xml·매니페스트·내비게이션 그래프)에 있을 때 그 파일 ID */
+  titleFile?: string;
   /** 화면이 부르는 URL (form action·ajax·링크·location 이동) */
   urls: UrlRef[];
   /** include한 조각 파일 경로 (불러온 폴더 기준으로 해석된 경로) */
@@ -182,7 +190,7 @@ export interface ViewFact {
 export interface UrlRef {
   url: string;           // 정규화된 경로 (컨텍스트 경로·호스트·쿼리 제거)
   method?: string;
-  kind: 'form' | 'ajax' | 'link' | 'location' | 'popup' | 'fetch';
+  kind: 'form' | 'ajax' | 'link' | 'location' | 'popup' | 'fetch' | 'webview';
   file: string;
   line: number;
 }
@@ -197,6 +205,8 @@ export interface MenuFact {
   order?: number;
   source: MenuSource;
   evidence: Evidence;
+  /** URL 없이 화면 파일로 잇는 메뉴 (앱 탭·드로어·내비게이션 그래프): 화면 파일 ID */
+  view?: string;
 }
 
 export interface BatchFact {
@@ -348,6 +358,8 @@ export interface ScreenResult {
   /** 메뉴에 없는 화면 */
   notInMenu: boolean;
   project?: string;
+  /** 앱 화면이면 플랫폼 (Android·React Native·Flutter) */
+  platform?: string;
 }
 
 export interface MenuResult {

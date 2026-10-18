@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}분류 목록{% endblock %}
+{% block content %}{% for c in object_list %}<p>{{ c.name }}</p>{% endfor %}{% endblock %}

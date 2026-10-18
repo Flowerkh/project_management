@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical">
+    <TextView android:id="@+id/product_name" />
+    <Button android:id="@+id/btn_order" android:text="주문하기" />
+</LinearLayout>

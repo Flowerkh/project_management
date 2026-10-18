@@ -1,0 +1,1 @@
+0 1 * * * /usr/bin/python3 /app/jobs/sync_erp.py >> /var/log/sync_erp.log 2>&1

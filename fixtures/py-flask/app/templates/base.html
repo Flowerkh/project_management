@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<head>
+<title>{% block title %}{% endblock %} | 사내 포털</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<nav>
+  <a href="{{ url_for('main.index') }}">공지</a>
+  <a href="{{ url_for('admin.member_list') }}">회원 관리</a>
+</nav>
+{% block content %}{% endblock %}
+</body>
+</html>

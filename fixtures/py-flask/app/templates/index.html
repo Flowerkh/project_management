@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% import "_macros.html" as macros %}
+{% block title %}공지사항{% endblock %}
+{% block content %}
+<a href="{{ url_for('.notice_new') }}">공지 등록</a>
+{% for n in notices %}
+  <a href="{{ url_for('main.notice_detail', notice_id=n.id) }}">{{ n.title }}</a>
+{% endfor %}
+{% endblock %}

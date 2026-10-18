@@ -128,6 +128,24 @@ const CODE_RULES: { lang: FileInfo['lang'][]; rules: Rule[] }[] = [
       { re: /\boci_(connect|parse|execute)\(|new\s+PDO\(\s*['"]oci:/, layer: 'DB', name: 'Oracle', weight: 2 },
     ],
   },
+  {
+    lang: ['Python'],
+    rules: [
+      { re: /^\s*(?:from|import)\s+django\b/m, layer: '컨트롤러', name: 'Django', weight: 1 },
+      { re: /^\s*(?:from|import)\s+rest_framework\b/m, layer: '컨트롤러', name: 'Django REST framework', weight: 1 },
+      { re: /^\s*from\s+flask\s+import\b|^\s*import\s+flask\b/m, layer: '컨트롤러', name: 'Flask', weight: 1 },
+      { re: /^\s*(?:from|import)\s+fastapi\b/m, layer: '컨트롤러', name: 'FastAPI', weight: 1 },
+      { re: /^\s*from\s+django\.db\s+import\s+models\b/m, layer: '데이터 접근', name: 'Django ORM', weight: 2 },
+      { re: /^\s*(?:from|import)\s+(?:sqlalchemy|flask_sqlalchemy|sqlmodel)\b/m, layer: '데이터 접근', name: 'SQLAlchemy', weight: 1 },
+      { re: /^\s*(?:import|from)\s+(?:cx_Oracle|oracledb)\b|['"]django\.db\.backends\.oracle['"]|oracle\+(?:cx_oracle|oracledb)/m, layer: 'DB', name: 'Oracle', weight: 2 },
+      { re: /^\s*(?:import|from)\s+(?:pymysql|MySQLdb|mysql\.connector|aiomysql)\b|['"]django\.db\.backends\.mysql['"]|mysql\+(?:pymysql|mysqldb|mysqlconnector|aiomysql)/m, layer: 'DB', name: 'MySQL', weight: 2 },
+      { re: /mariadb\+|['"]mariadb['"]\s*:|^\s*import\s+mariadb\b/m, layer: 'DB', name: 'MariaDB', weight: 2 },
+      { re: /^\s*(?:import|from)\s+(?:psycopg2?|asyncpg)\b|['"]django\.db\.backends\.postgresql(?:_psycopg2)?['"]|postgresql(?:\+\w+)?:\/\//m, layer: 'DB', name: 'PostgreSQL', weight: 2 },
+      { re: /['"]django\.db\.backends\.sqlite3['"]|sqlite(?:\+\w+)?:\/\/|^\s*import\s+sqlite3\b/m, layer: 'DB', name: 'SQLite', weight: 1 },
+      { re: /^\s*(?:from|import)\s+apscheduler\b/m, layer: '배치', name: 'APScheduler', weight: 2 },
+      { re: /^\s*(?:from|import)\s+celery\b|^\s*@(?:shared_task|celery\.task|app\.task)\b/m, layer: '배치', name: 'Celery', weight: 2 },
+    ],
+  },
 ];
 
 function isBuildFile(name: string): boolean {

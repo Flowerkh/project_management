@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}상품 목록{% endblock %}
+{% block content %}
+<a href="{% url 'shop:order-list' %}">주문 API</a>
+<div id="summary"></div>
+<script src="{% static 'shop/js/summary.js' %}"></script>
+<script>
+  fetch("{% url 'shop:order_summary' %}").then(r => r.json());
+</script>
+{% endblock %}

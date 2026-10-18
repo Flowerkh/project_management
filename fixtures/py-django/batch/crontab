@@ -1,0 +1,3 @@
+# 쇼핑몰 배치
+0 2 * * * /usr/bin/python3 /app/batch/daily_settle.py
+30 3 * * * cd /app && python manage.py cleanup_comments

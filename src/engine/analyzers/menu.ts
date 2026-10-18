@@ -290,6 +290,8 @@ export const menuAnalyzer: Analyzer = {
     if (f.layer === 'TEST') return false;
     if (f.lang === 'SQL') return /INSERT\s+INTO\s+[\w."`]*(MENU|PROGRM)/i.test(text);
     const name = baseName(f.path).toLowerCase();
+    // Android 리소스 메뉴(res/menu/*.xml)는 android 분석기가 내비게이션 그래프와 함께 읽음
+    if (f.lang === 'XML' && /(^|\/)res\/(menu|navigation)\//.test(f.path)) return false;
     if ((f.lang === 'XML' || f.lang === 'JSON') && /menu/.test(name)) return true;
     if ((f.lang === 'JSP' || f.lang === 'HTML' || f.lang === 'Template' || (f.lang === 'PHP' && f.layer === 'VIEW')) && MENU_FILE.test(name.replace(/\.(jsp|jspf|html?|php|tpl|blade\.php)$/, ''))) return /<li\b/i.test(text) && /<a\b/i.test(text);
     return false;

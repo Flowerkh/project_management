@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}회원 관리{% endblock %}
+{% block content %}
+{% for m in members %}
+<form method="post" action="{{ url_for('admin.member_delete', member_id=m.member_id) }}"><button>삭제</button></form>
+{% endfor %}
+{% endblock %}

@@ -74,6 +74,7 @@ export function techTable(facts: Facts, linked: Linked): AnalysisResult['tech'] 
     else if (layer === 'DB') files = linked.tables.length;
     else if (layer === '배치') files = linked.batches.length;
     else if (layer === '설정') files = count((l) => l === 'CONFIG');
+    else if (layer === '앱') files = new Set(linked.screens.filter((s) => s.platform && s.view).map((s) => s.view)).size;
     if (layer === '서비스' && !n.length && files) n.push('서비스 계층');
     if (!n.length && !files) continue;
     if (!n.length && layer !== '화면' && layer !== '서비스') continue;
@@ -84,12 +85,14 @@ export function techTable(facts: Facts, linked: Linked): AnalysisResult['tech'] 
 
 export function systemTypes(facts: Facts, linked: Linked): SystemType[] {
   const types: SystemType[] = [];
-  const pages = linked.screens.filter((s) => s.kind !== 'api').length;
+  // 앱 화면(platform 있음)은 웹 화면 수에서 뺀다
+  const pages = linked.screens.filter((s) => s.kind !== 'api' && !s.platform).length;
+  const appScreens = linked.screens.filter((s) => s.kind !== 'api' && s.platform).length;
   const apis = linked.screens.filter((s) => s.kind === 'api').length;
   const has = (name: string) => facts.tech.some((t) => t.name === name && t.weight >= 2);
-  if (has('Android') || has('Flutter') || has('React Native')) types.push('모바일 앱');
+  if (appScreens > 0 || has('Android') || has('Flutter') || has('React Native')) types.push('모바일 앱');
   if (pages > 0) types.push('웹');
-  else if ((has('React') || has('Vue') || has('Angular')) && !apis) types.push('웹 프론트엔드');
+  else if ((has('React') || has('Vue') || has('Angular')) && !apis && !has('React Native')) types.push('웹 프론트엔드');
   if (apis > 0 && pages === 0) types.push('API 서버');
   if (linked.batches.length > 0) types.push('배치');
   if (!types.length) types.push('라이브러리');
@@ -108,11 +111,25 @@ export function describe(facts: Facts, linked: Linked, types: SystemType[], proj
   ].filter((w) => /[가-힣]/.test(w));
   const domain = guessDomain(words);
   const admin = /admin|관리자|mng|manage/i.test(projectName) || linked.screens.filter((s) => /관리/.test(s.name)).length > linked.screens.length * 0.3;
-  const typeWord = types.includes('웹') ? (admin ? '관리자 웹' : '웹') : types.includes('API 서버') ? 'API 서버' : types.includes('모바일 앱') ? '모바일 앱' : types.includes('배치') ? '배치 시스템' : '시스템';
-  const title = `${main ? `${main} 기반 ` : ''}${domain ? `${domain} ` : ''}${typeWord}`;
+  let typeWord = types.includes('웹') ? (admin ? '관리자 웹' : '웹') : types.includes('API 서버') ? 'API 서버' : types.includes('모바일 앱') ? '모바일 앱' : types.includes('배치') ? '배치 시스템' : '시스템';
+  // 모바일 앱: 앱 기술(Android·Flutter·React Native)을 앞에, 같은 폴더의 API 서버는 뒤에 붙임
+  const appTech = facts.tech.filter((t) => t.layer === '앱' && /^(Android|Flutter|React Native)$/.test(t.name) && t.weight >= 2).sort((a, b) => b.weight - a.weight).map((t) => t.name);
+  let lead = main;
+  let tail = '';
+  if (types.includes('모바일 앱')) {
+    if (types.includes('웹')) typeWord += '·모바일 앱';
+    else {
+      typeWord = '모바일 앱';
+      if (types.includes('API 서버')) tail = ` (${main ? `${main} ` : ''}API 서버 포함)`;
+      lead = appTech[0] ?? main;
+    }
+  }
+  const title = `${lead ? `${lead} 기반 ` : ''}${domain ? `${domain} ` : ''}${typeWord}${tail}`;
   const pages = linked.screens.filter((s) => s.kind !== 'api');
+  const appPages = pages.filter((s) => s.platform).length;
   const parts: string[] = [];
-  if (pages.length) parts.push(`화면 ${pages.length}개`);
+  if (appPages) parts.push(`앱 화면 ${appPages}개`);
+  if (pages.length - appPages) parts.push(`${appPages ? '웹 ' : ''}화면 ${pages.length - appPages}개`);
   const apis = linked.screens.length - pages.length;
   if (apis) parts.push(`API ${apis}개`);
   parts.push(`테이블 ${linked.tables.length}개`);
@@ -126,6 +143,6 @@ export function describe(facts: Facts, linked: Linked, types: SystemType[], proj
   if (big && big[1] >= 3 && pages.length >= 6) summary += ` ${big[0]} 아래 화면(${big[1]}개)이 가장 많습니다.`;
   const ev: Evidence[] = [];
   for (const t of facts.tech.filter((x) => x.weight >= 2).sort((a, b) => b.weight - a.weight).slice(0, 4)) ev.push(...t.evidence.slice(0, 1));
-  const conf: Confidence = main && (pages.length || apis) ? '높음' : main || pages.length ? '보통' : '낮음';
+  const conf: Confidence = lead && (pages.length || apis) ? '높음' : lead || pages.length ? '보통' : '낮음';
   return { title, summary, domainEstimated: !!domain, confidence: conf, evidence: ev };
 }

@@ -7,6 +7,7 @@ import { ANALYZERS } from './analyzers';
 import { link } from './link';
 import { databases, describe, languages, systemTypes, techTable } from './summary';
 import { pruneVendorMappers } from './vendor';
+import { assignSubProjects, subProjectList } from './projects';
 
 export * from './types';
 export { decode } from './files';
@@ -75,6 +76,7 @@ export async function analyze(input: SourceFile[], opts: AnalyzeOptions = {}): P
   if (pruned && pruned.dropped) {
     facts.notes.push({ kind: 'other', title: '다른 DB용 매퍼·스크립트 제외', detail: `감지한 DB(${pruned.kept}) 것만 분석`, items: [{ ref: pruned.kept, note: `SQL ${pruned.dropped}건 제외` }] });
   }
+  const subRoots = assignSubProjects(facts);
   const linked = link(facts);
   report({ step: 5, stepName: STEPS[4], done: 1, total: 1 });
   await tick();
@@ -96,7 +98,7 @@ export async function analyze(input: SourceFile[], opts: AnalyzeOptions = {}): P
       domainEstimated: d.domainEstimated,
       confidence: d.confidence,
       evidence: d.evidence,
-      subProjects: [],
+      subProjects: subProjectList(subRoots, facts, linked),
     },
     stats: {
       totalFiles: files.length,

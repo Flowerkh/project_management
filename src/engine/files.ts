@@ -6,6 +6,8 @@ export const DEFAULT_EXCLUDE_DIRS = [
   '.git', '.svn', '.hg', '.idea', '.vscode', '.settings', '.gradle', '.mvn', '.next', '.nuxt', '.cache',
   'node_modules', 'bower_components', 'jspm_packages', 'vendor', 'target', 'build', 'dist', 'out', 'bin', 'obj',
   '__pycache__', '.venv', 'venv', 'coverage', 'logs', 'tmp', '.dart_tool', 'Pods',
+  // iOS·macOS 앱은 분석 범위 밖 (Flutter·React Native 프로젝트의 ios/·macos/ 폴더 포함)
+  'ios', 'macos',
 ];
 
 const BINARY_EXT = new Set([

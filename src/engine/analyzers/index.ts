@@ -8,18 +8,28 @@ import { jspAnalyzer } from './jsp';
 import { menuAnalyzer } from './menu';
 import { mybatisAnalyzer } from './mybatis';
 import { phpAnalyzer } from './php';
+import { pythonAnalyzer } from './python';
 import { scriptAnalyzer } from './script';
 import { sqlFilesAnalyzer } from './sqlfiles';
+import { androidAnalyzer } from './android';
+import { kotlinAnalyzer } from './kotlin';
+import { rnAnalyzer } from './rn';
+import { flutterAnalyzer } from './flutter';
 
 export const ANALYZERS: Analyzer[] = [
   detectAnalyzer,
   sqlFilesAnalyzer,
   mybatisAnalyzer,
   javaAnalyzer,
+  kotlinAnalyzer,
+  androidAnalyzer,
   phpAnalyzer,
   goAnalyzer,
+  flutterAnalyzer,
+  pythonAnalyzer,
   jspAnalyzer,
   scriptAnalyzer,
+  rnAnalyzer,
   menuAnalyzer,
   batchAnalyzer,
 ].sort((a, b) => a.order - b.order);

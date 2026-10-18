@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}공지 상세{% endblock %}
+{% block content %}
+<h1>{{ notice.title }}</h1>
+<button onclick="remove()">삭제</button>
+<script>
+function remove() {
+  fetch("{{ url_for('api.notice_api', notice_id=notice.id) }}", { method: 'DELETE' });
+}
+</script>
+{% endblock %}

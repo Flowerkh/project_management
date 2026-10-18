@@ -1,0 +1,5 @@
+name: field_app
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.1

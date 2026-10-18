@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}글 보기{% endblock %}
+{% block content %}
+<h2>{{ post.title }}</h2>
+<a href="{% url 'blog:post_edit' post.pk %}">수정</a>
+<a href="{% url 'blog:post_publish' post.pk %}">게시</a>
+<form method="post" action="{% url 'blog:post_delete' post.pk %}">{% csrf_token %}<button>삭제</button></form>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button>댓글 등록</button></form>
+{% endblock %}
