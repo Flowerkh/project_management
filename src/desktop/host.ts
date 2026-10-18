@@ -18,6 +18,19 @@ export interface Host {
   /** 문자열 암호화 (Windows: DPAPI, 사용자 계정 기준). 쓸 수 없으면 null */
   encrypt(text: string): Buffer | null;
   decrypt(data: Buffer): string | null;
+  /**
+   * 인터넷 연결 확인: url에 요청해 HTTP 응답이 오면 ok (상태 코드와 상관없이 — 401·404도 연결은 된 것).
+   * Electron은 PC의 프록시 설정(시스템·PAC)을 따르고, proxy를 주면 그 프록시로 확인한다.
+   */
+  netCheck?(url: string, opts?: { timeoutMs?: number; proxy?: string }): Promise<NetCheckResult>;
+}
+
+export interface NetCheckResult {
+  ok: boolean;
+  status?: number;
+  ms: number;
+  /** 실패 원인 (net::ERR_INTERNET_DISCONNECTED, 시간 초과 …) */
+  error?: string;
 }
 
 let current: Host | null = null;
@@ -32,7 +45,10 @@ export function host(): Host {
 }
 
 /** 테스트용 host: 대화상자는 미리 정한 값을 돌려주고 암호화는 base64 */
-export function testHost(dataDir: string, answers: { folder?: string | null; file?: string | null; save?: string | false } = {}): Host {
+export function testHost(
+  dataDir: string,
+  answers: { folder?: string | null; file?: string | null; save?: string | false; net?: NetCheckResult | ((url: string, opts?: { proxy?: string }) => NetCheckResult) } = {},
+): Host {
   return {
     dataDir,
     appVersion: '0.0.0-test',
@@ -59,6 +75,12 @@ export function testHost(dataDir: string, answers: { folder?: string | null; fil
     decrypt(data) {
       const s = data.toString('utf8');
       return s.startsWith('test:') ? s.slice(5) : null;
+    },
+    // 시험에서는 실제로 인터넷에 나가지 않는다 (기본: 연결됨)
+    async netCheck(url, opts) {
+      const a = answers.net;
+      if (typeof a === 'function') return a(url, opts);
+      return a ?? { ok: true, status: 200, ms: 1 };
     },
   };
 }

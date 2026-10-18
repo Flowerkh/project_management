@@ -1,0 +1,3 @@
+#!/bin/sh
+# 가짜 Claude Code CLI (실행 파일 경로로 시험할 때). 실제 동작은 같은 폴더의 fake-claude.mjs
+exec node "$(dirname "$0")/fake-claude.mjs" "$@"

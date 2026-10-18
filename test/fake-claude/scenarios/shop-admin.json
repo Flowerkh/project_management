@@ -1,0 +1,47 @@
+{
+  "probe": [{ "say": "OK" }],
+  "turns": [
+    {
+      "steps": [
+        { "say": "주문 상태를 바꿀 때 이력이 어디서 저장되는지 먼저 확인하겠습니다." },
+        { "tool": "Grep", "input": { "pattern": "insertOrderHist", "output_mode": "files_with_matches" } },
+        { "tool": "Read", "input": { "file_path": "src/main/java/egovframework/shop/order/service/impl/OrderServiceImpl.java" } },
+        { "tool": "Read", "input": { "file_path": "src/main/resources/egovframework/egovProps/globals.properties" } },
+        { "mcp": "db_select", "input": { "sql": "SELECT ORDER_NO, COUNT(*) AS CNT FROM TB_ORDER_HIST GROUP BY ORDER_NO HAVING COUNT(*) > 1", "env": "dev" } },
+        {
+          "say": "원인은 이력 저장이 서비스와 컨트롤러 양쪽에서 호출되기 때문입니다. `src/main/java/egovframework/shop/order/service/impl/OrderServiceImpl.java:47`의 `insertOrderHist()`가 상태 변경 뒤 한 번 더 불립니다.\n\n수정안: `insertOrderHist()`에 이력은 `updateOrderStat()`에서 한 번만 저장한다는 주석과 함께 중복 호출을 막습니다."
+        },
+        {
+          "tool": "ExitPlanMode",
+          "input": { "plan": "## 수정 계획\n1. `OrderServiceImpl.insertOrderHist()`의 중복 저장을 막는다 (`OrderServiceImpl.java:47`)\n2. 영향 범위: 주문상세, 반품·교환 화면, TB_ORDER_HIST" },
+          "onDeny": "알겠습니다. 계획 모드를 유지하겠습니다. 수정안에서 바꿀 부분이 있으면 말씀해 주세요."
+        },
+        {
+          "tool": "Edit",
+          "input": {
+            "file_path": "src/main/java/egovframework/shop/order/service/impl/OrderServiceImpl.java",
+            "old_string": "        return orderdao.insertOrderHist(vo);",
+            "new_string": "        // 주문 이력은 updateOrderStat()에서 한 번만 저장한다 (중복 저장 방지)\n        return orderdao.insertOrderHist(vo);"
+          }
+        },
+        { "say": "작업 사본의 `OrderServiceImpl.java`를 고쳤습니다. 변경 검토에서 확인한 뒤 [적용]을 눌러 주세요." }
+      ]
+    },
+    {
+      "match": "중복|지워|삭제|DELETE|정리",
+      "steps": [
+        {
+          "mcp": "db_propose_change",
+          "input": {
+            "sql": "DELETE FROM TB_ORDER_HIST H WHERE H.HIST_SN NOT IN (SELECT MIN(HIST_SN) FROM TB_ORDER_HIST GROUP BY ORDER_NO, ORDER_STAT_CD, REG_DT)",
+            "env": "dev",
+            "description": "같은 주문·상태·시각으로 두 번 쌓인 주문 이력 중 먼저 저장된 것만 남기고 지웁니다.",
+            "revert_sql": "-- 지운 행은 작업 이력의 백업에서 다시 넣어야 합니다 (DELETE는 자동으로 되돌릴 수 없음)"
+          }
+        },
+        { "say": "쌓인 중복 이력을 지우는 쿼리를 카드로 올렸습니다. 대상 DB와 예상 행 수를 확인한 뒤 [실행]을 눌러 주세요." }
+      ]
+    }
+  ],
+  "default": [{ "say": "네, 확인했습니다. 더 필요한 것이 있으면 말씀해 주세요." }]
+}

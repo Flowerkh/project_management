@@ -1,7 +1,7 @@
 // 프로젝트 분석 시스템 데스크톱 앱 (Electron 메인 프로세스)
 // 화면은 app/index.html (웹 빌드와 같은 코드). 여기서는 폴더 읽기·저장과 데스크톱 기능(Claude·형상관리·작업 이력·DB)을 처리한다.
 // esbuild로 desktop/main.mjs 하나로 묶는다 (scripts/build-desktop.mjs).
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, safeStorage, session, shell } from 'electron';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -215,6 +215,32 @@ function setupHost(): void {
         return safeStorage.decryptString(data);
       } catch {
         return null;
+      }
+    },
+    // 인터넷 확인: Chromium 네트워크(PC 프록시 설정·PAC를 따름). proxy를 주면 별도 세션에 그 프록시를 걸어 확인
+    async netCheck(url, opts) {
+      // E2E 시험(PA_E2E=1)에서만: PA_FAKE_NET=ok|fail 로 결과를 정한다 (실제로 나가지 않음)
+      if (process.env.PA_E2E === '1' && process.env.PA_FAKE_NET)
+        return process.env.PA_FAKE_NET === 'fail' ? { ok: false, ms: 1, error: 'net::ERR_INTERNET_DISCONNECTED (PA_FAKE_NET)' } : { ok: true, status: 200, ms: 1 };
+      const t0 = Date.now();
+      const timeoutMs = opts?.timeoutMs ?? 8000;
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), timeoutMs);
+      try {
+        let res: Response;
+        if (opts?.proxy) {
+          const ses = session.fromPartition('pa-netcheck');
+          // Chromium 프록시 규칙에는 계정을 넣을 수 없다 (계정이 필요하면 407 응답 = 연결은 됨)
+          await ses.setProxy({ proxyRules: opts.proxy.replace(/^([a-z]+:\/\/)[^/@\s]+@/i, '$1') });
+          res = await ses.fetch(url, { method: 'HEAD', signal: ac.signal, cache: 'no-store' });
+        } else {
+          res = await net.fetch(url, { method: 'HEAD', signal: ac.signal, cache: 'no-store' });
+        }
+        return { ok: true, status: res.status, ms: Date.now() - t0 };
+      } catch (e) {
+        return { ok: false, ms: Date.now() - t0, error: ac.signal.aborted ? `응답 없음 (${Math.round(timeoutMs / 1000)}초)` : String((e as Error)?.message ?? e) };
+      } finally {
+        clearTimeout(timer);
       }
     },
   });
