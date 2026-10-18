@@ -9,6 +9,8 @@ const SUPPORTED = [
   'Java · JSP · Spring (전자정부) · MyBatis',
   'PHP · Laravel · CodeIgniter',
   'Go · Gin · Echo',
+  'Python · Django · Flask · FastAPI',
+  'Android · React Native · Flutter',
   '셸 · 배치 · PowerShell 스크립트',
   'Oracle · MySQL · MariaDB',
 ];
@@ -113,9 +115,9 @@ export function Home(props: {
             <h3>이 프로토타입에서 하는 일</h3>
           </div>
           <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', lineHeight: 1.75, color: 'var(--ink2)' }}>
-            <li>폴더·ZIP 불러오기와 제외 규칙 적용</li>
+            <li>폴더·ZIP 불러오기와 제외 규칙 적용, 하위 프로젝트(앱·서버) 감지</li>
             <li>사용 언어·DB·시스템 유형 판별</li>
-            <li>DB 테이블·메뉴·화면·배치 트리와 상세</li>
+            <li>DB 테이블·메뉴·화면·배치 트리와 상세 (앱 화면은 API로 서버 테이블까지)</li>
             <li>소스 보기(근거 줄·테이블 강조), 결과 파일 저장</li>
           </ul>
           <div class="muted" style={{ fontSize: '12px', marginTop: '8px' }}>Claude 연동·형상관리·DB 조회는 데스크톱 앱에서 씁니다. 내보내기(Excel)는 다음 단계에서 붙습니다.</div>

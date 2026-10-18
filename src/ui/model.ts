@@ -48,6 +48,9 @@ const GROUP_WORDS: Record<string, string> = {
   cart: '장바구니', event: '이벤트', banner: '배너', faq: 'FAQ', qna: '문의', inquiry: '문의', api: 'API', mypage: '마이페이지',
   dept: '부서', emp: '직원', hr: '인사', approval: '결재', file: '파일', attach: '첨부', log: '로그', report: '보고서',
   stock: '재고', inventory: '재고', claim: '클레임', review: '리뷰', point: '포인트', category: '분류', config: '설정',
+  // 앱 화면 폴더
+  screens: '화면', screen: '화면', pages: '화면', views: '화면', home: '홈', profile: '내 정보', settings: '설정', setting: '설정',
+  account: '계정', accounts: '계정', search: '검색', detail: '상세', task: '작업', tasks: '작업', chat: '채팅', notification: '알림',
 };
 
 export function groupLabel(group: string, menuName?: string): string {

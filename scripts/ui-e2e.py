@@ -7,8 +7,9 @@ import time
 from playwright.sync_api import sync_playwright
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-HTML = os.path.join(ROOT, 'dist', 'web', 'project-analyzer.html')
-OUT = os.path.join(ROOT, 'dist', 'shots')
+DIST = os.environ.get('PA_DIST') or os.path.join(ROOT, 'dist')
+HTML = os.path.join(DIST, 'web', 'project-analyzer.html')
+OUT = os.path.join(DIST, 'shots')
 FOLDER = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'fixtures', 'shop-admin'))
 TAG = os.path.basename(FOLDER.rstrip('/'))
 
