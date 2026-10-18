@@ -23,8 +23,8 @@ export function Home(props: {
   onOpenResult: () => void;
   onOpenRecent: (key: string) => void;
   onRemoveRecent: (key: string) => void;
-  /** 데스크톱 앱: [새 프로젝트] */
-  extraActions?: ComponentChildren;
+  /** 데스크톱 앱: 오른쪽 카드 자리에 '새 프로젝트 시작' (없으면 이 프로토타입 안내) */
+  side?: ComponentChildren;
 }) {
   const [over, setOver] = useState(false);
   return (
@@ -61,7 +61,6 @@ export function Home(props: {
             <Icon name="json" size={17} />
             결과 파일 열기
           </button>
-          {props.extraActions}
         </div>
         <span class="notice" style={{ marginTop: '12px' }}>
           <Icon name="shield" size={15} color="var(--ok)" />
@@ -108,6 +107,7 @@ export function Home(props: {
             </div>
           ))}
         </section>
+        {props.side ?? (
         <section class="card">
           <div class="card-title">
             <h3>이 프로토타입에서 하는 일</h3>
@@ -118,8 +118,9 @@ export function Home(props: {
             <li>DB 테이블·메뉴·화면·배치 트리와 상세</li>
             <li>소스 보기(근거 줄·테이블 강조), 결과 파일 저장</li>
           </ul>
-          <div class="muted" style={{ fontSize: '12px', marginTop: '8px' }}>Claude 연동·DB 조회·내보내기(Excel)는 다음 단계에서 붙습니다.</div>
+          <div class="muted" style={{ fontSize: '12px', marginTop: '8px' }}>Claude 연동·형상관리·DB 조회는 데스크톱 앱에서 씁니다. 내보내기(Excel)는 다음 단계에서 붙습니다.</div>
         </section>
+        )}
       </div>
 
       <div class="sup">

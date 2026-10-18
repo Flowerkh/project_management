@@ -8,6 +8,7 @@ import { walkFolder } from '../platform/electron';
 import { getPlatform } from '../platform/index';
 import type { FolderFile, LoadedFolder } from '../platform/types';
 import type { MenuRow } from '../shared/desktop-api';
+import { redactSecrets } from '../shared/secrets';
 import { ConfirmDialog, DEFAULT_SETTINGS, type Settings, SettingsModal } from './components/Dialogs';
 import { Header } from './components/Header';
 import { ancestorsOf, Sidebar } from './components/Sidebar';
@@ -25,6 +26,7 @@ import { newRunState, overallPct, Running, type RunState, STEP_NAMES } from './s
 import { Summary } from './screens/Summary';
 import { getDesk } from './desktop/bridge';
 import { NewProjectView } from './desktop/claude/NewProject';
+import { NewProjectCard } from './desktop/NewProjectCard';
 import type { ReanalyzeResult } from './desktop/ctx';
 import { msg } from './desktop/messages';
 import { DeskCtx, useDesktopShell } from './desktop/shell';
@@ -539,7 +541,8 @@ export function App(props: { init?: Initial }) {
       const ff = folderIndex.get(info.path);
       if (!ff) return null;
       const bytes = await ff.read();
-      const text = decode(bytes).text;
+      // DB 접속 정보(주소·계정·비밀번호)는 소스 뷰어에서도 가린다 (기획서 9장). 줄 수는 그대로
+      const text = redactSecrets(decode(bytes).text, info.path).text;
       if (textCache.current.size > 60) textCache.current.clear();
       textCache.current.set(fileId, text);
       return text;
@@ -597,23 +600,7 @@ export function App(props: { init?: Initial }) {
         onOpenResult={openResult}
         onOpenRecent={openRecent}
         onRemoveRecent={(k) => removeRecent(k).then(refreshRecent)}
-        extraActions={
-          shell && (
-            <button
-              type="button"
-              class="btn lg"
-              disabled={!!loading}
-              onClick={() => {
-                const st = shell.app.claude?.state;
-                if (!shell.app.claudeConfig?.enabled || st === 'off' || st === 'missing') shell.app.openModal('claude');
-                else setPhase('new');
-              }}
-            >
-              <Icon name="sparkle" size={17} />
-              새 프로젝트
-            </button>
-          )
-        }
+        side={shell && <NewProjectCard onStart={() => setPhase('new')} disabled={!!loading} />}
       />
     );
   else if (phase === 'new' && shell) mainView = <NewProjectView onCancel={() => setPhase('home')} onOpenFolder={openFolderAndRun} />;

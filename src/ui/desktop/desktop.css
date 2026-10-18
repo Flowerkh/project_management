@@ -52,3 +52,9 @@
   .main-col .grid5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .main-col .page { padding: 16px 16px 24px; }
 }
+
+/* SCR-01 ⑩ 새 프로젝트 시작 */
+.np-card { background: var(--acc-bg); border-color: var(--acc-line); display: flex; flex-direction: column; gap: 8px; }
+.np-card h3 { margin: 4px 0 0; font-size: 15px; font-weight: 700; }
+.np-card p { margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink2); }
+.np-ic { width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 1px solid var(--acc-line); display: inline-flex; align-items: center; justify-content: center; }
