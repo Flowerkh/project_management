@@ -43,6 +43,8 @@ const common = {
   define: {
     'process.env.NODE_ENV': '"production"',
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // PA_DESK=0: 데스크톱 3단계 기능(Claude·형상관리·DB)을 숨긴 빌드
+    __DESK_FEATURES__: JSON.stringify(process.env.PA_DESK !== '0'),
   },
   plugins: [engineStub],
   write: false,

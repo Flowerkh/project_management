@@ -45,9 +45,15 @@ export function deskFromBridge(b: RawBridge, mock = false): Desk {
 
 let cached: Desk | null | undefined;
 
+declare const __DESK_FEATURES__: boolean | undefined;
+
 /** 데스크톱 기능을 쓸 수 있으면 Desk, 아니면 null */
 export function getDesk(): Desk | null {
   if (cached !== undefined) return cached;
+  if (typeof __DESK_FEATURES__ !== 'undefined' && !__DESK_FEATURES__) {
+    cached = null;
+    return cached;
+  }
   const w = typeof window !== 'undefined' ? (window as unknown as { __ELECTRON__?: Partial<RawBridge>; __DESK_MOCK__?: RawBridge }) : undefined;
   if (w?.__DESK_MOCK__) cached = deskFromBridge(w.__DESK_MOCK__, true);
   else if (w?.__ELECTRON__?.invoke && w.__ELECTRON__.onEvent) cached = deskFromBridge(w.__ELECTRON__ as RawBridge);
