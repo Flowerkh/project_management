@@ -58,6 +58,8 @@ export interface ConvApi {
   start(root: string | null, opts?: ClaudeStartOptions): Promise<Conversation | null>;
   send(text: string, target?: Conversation): Promise<boolean>;
   setMode(mode: ChatMode): Promise<void>;
+  /** 대화의 모델 바꾸기 ('' = Claude Code 기본값) */
+  setModel(model: string): Promise<void>;
   interrupt(): Promise<void>;
   respond(requestId: string, allow: boolean): Promise<void>;
   clear(): void;
@@ -121,7 +123,15 @@ export function useConversation(app: DeskApp): ConvApi {
       const wasRunning = c.running;
       setConv((p) =>
         p && p.id === ev.conversationId
-          ? { ...p, running: ev.running, mode: ev.mode, workId: ev.workId ?? p.workId, pending: 'pending' in ev ? ev.pending ?? undefined : p.pending }
+          ? {
+              ...p,
+              running: ev.running,
+              mode: ev.mode,
+              workId: ev.workId ?? p.workId,
+              pending: 'pending' in ev ? ev.pending ?? undefined : p.pending,
+              ...(ev.model !== undefined ? { model: ev.model } : {}),
+              ...(ev.activeModel ? { activeModel: ev.activeModel } : {}),
+            }
           : p,
       );
       if (wasRunning && !ev.running) {
@@ -229,6 +239,22 @@ export function useConversation(app: DeskApp): ConvApi {
     [app.desk],
   );
 
+  const setModel = useCallback(
+    async (model: string) => {
+      const c = ref.current;
+      if (!c) return;
+      const prev = c.model;
+      setConv((p) => (p && p.id === c.id ? { ...p, model } : p));
+      try {
+        await app.desk.invoke('claude.setModel', c.id, model);
+      } catch (e) {
+        setConv((p) => (p && p.id === c.id ? { ...p, model: prev } : p));
+        setError(`모델을 바꾸지 못했습니다. ${errText(e)}`);
+      }
+    },
+    [app.desk],
+  );
+
   const interrupt = useCallback(async () => {
     const c = ref.current;
     if (!c) return;
@@ -280,7 +306,7 @@ export function useConversation(app: DeskApp): ConvApi {
   void approvedTick;
   const approved = (conv && approvedByConv.get(conv.id)) || EMPTY;
 
-  return { conv, progress, starting, loading, error, setError, approved, load, start, send, setMode, interrupt, respond, clear, refetch, markPlanApproval };
+  return { conv, progress, starting, loading, error, setError, approved, load, start, send, setMode, setModel, interrupt, respond, clear, refetch, markPlanApproval };
 }
 
 const EMPTY = new Set<string>();

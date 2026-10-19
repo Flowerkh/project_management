@@ -11,6 +11,7 @@ import { checkCandidate } from './cli';
 import { authKey, getConfig, getStored, loadStatusCache, setCliPath, setConfig } from './config';
 import { buildCliEnv } from './env';
 import { ClaudeManager } from './manager';
+import { ModelCatalog } from './models';
 import { type QueryFn, sdkQuery } from './sdk';
 import { StatusManager } from './status';
 
@@ -21,10 +22,10 @@ export interface ClaudeModuleOptions {
   interruptGraceMs?: number;
 }
 
-let current: { manager: ClaudeManager; status: StatusManager } | null = null;
+let current: { manager: ClaudeManager; status: StatusManager; models: ModelCatalog } | null = null;
 
 /** 시험용: 지금 등록된 모듈 */
-export function claudeModule(): { manager: ClaudeManager; status: StatusManager } {
+export function claudeModule(): { manager: ClaudeManager; status: StatusManager; models: ModelCatalog } {
   if (!current) throw new Error('claude 모듈이 등록되지 않았습니다');
   return current;
 }
@@ -32,9 +33,10 @@ export function claudeModule(): { manager: ClaudeManager; status: StatusManager 
 export function register(opts: ClaudeModuleOptions = {}): void {
   const queryFn = opts.queryFn ?? sdkQuery;
   const status = new StatusManager({ queryFn, authTimeoutMs: opts.authTimeoutMs });
-  const manager = new ClaudeManager({ queryFn, status, idleMs: opts.idleMs, interruptGraceMs: opts.interruptGraceMs });
+  const models = new ModelCatalog({ queryFn, status });
+  const manager = new ClaudeManager({ queryFn, status, idleMs: opts.idleMs, interruptGraceMs: opts.interruptGraceMs, models });
   if (current) void current.manager.closeAll();
-  current = { manager, status };
+  current = { manager, status, models };
   manager.ensureCardSubscription();
 
   services.claude = {
@@ -47,6 +49,7 @@ export function register(opts: ClaudeModuleOptions = {}): void {
   handle('claude.config.set', async (input: ClaudeConfigInput) => {
     const r = await setConfig(input);
     if (r.authChanged || r.enabledNow || r.disabledNow) status.invalidate();
+    // 모델 목록은 CLI·인증 지문이 바뀌면 다음에 받을 때 새로 받는다 (기본 모델만 바꾼 것은 목록과 상관없음)
     if (r.disabledNow) await manager.closeAll();
     else if (r.authChanged) manager.closeIdle();
     if (r.enabledNow) {
@@ -67,6 +70,7 @@ export function register(opts: ClaudeModuleOptions = {}): void {
     if (!r.ok) throw new DesktopError(r.message, r.reason === 'old' ? 'cli-old' : 'cli-invalid');
     await setCliPath(p);
     status.invalidate();
+    models.invalidate();
     manager.closeIdle();
     void status.get(false).catch(() => undefined);
     return p;
@@ -77,9 +81,12 @@ export function register(opts: ClaudeModuleOptions = {}): void {
   handle('claude.start', (root, o) => manager.start(typeof root === 'string' && root ? root : null, o ?? {}));
   handle('claude.send', (id, text) => manager.send(String(id), String(text ?? '')));
   handle('claude.setMode', (id, mode: ChatMode) => manager.setMode(String(id), mode));
+  handle('claude.models', (refresh) => models.list(!!refresh));
+  handle('claude.setModel', (id, model) => manager.setModel(String(id), typeof model === 'string' ? model : ''));
   handle('claude.interrupt', (id) => manager.interrupt(String(id)));
   handle('claude.respond', (id, requestId, allow) => manager.respond(String(id), String(requestId), !!allow));
   handle('claude.delete', (id) => manager.delete(String(id)));
+  handle('claude.clear', (root) => manager.clear(String(root ?? '')));
   handle('claude.export', (id) => manager.exportMarkdown(String(id)));
 
   onShutdown(() => manager.closeAll());

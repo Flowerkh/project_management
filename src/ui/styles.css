@@ -84,6 +84,28 @@ svg.ic { flex: none; display: block; fill: none; stroke: currentColor; stroke-li
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; max-width: 220px;
   border: 1px solid var(--line); border-radius: 6px; background: var(--surf); font-family: var(--mono); font-size: 13px; color: var(--ink2);
 }
+.brand-ver { align-self: center; margin-left: -4px; padding: 1px 6px; border-radius: 4px; background: var(--surf2); font-size: 11.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 프로젝트 이름 (누르면 분석했던 프로젝트 목록) + 프로젝트 연결 아이콘 */
+.proj-wrap { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; }
+.proj-chip.click { cursor: pointer; }
+.proj-chip.click:hover, .proj-chip.on { border-color: var(--acc-line); background: var(--acc-bg); }
+.proj-link { flex: none; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+.proj-link:hover { border-color: var(--acc-line); background: var(--acc-bg); }
+.proj-link:focus-visible, .proj-chip.click:focus-visible { outline: 2px solid var(--acc-line); outline-offset: 1px; }
+.proj-pop { width: 380px; padding: 12px 8px 8px; }
+.proj-pop .pop-title { padding: 0 8px; margin-bottom: 6px; }
+.proj-list { display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 200px)); overflow: auto; }
+.proj-item { display: flex; align-items: flex-start; gap: 9px; width: 100%; padding: 8px; border: none; border-radius: 7px; background: none; text-align: left; cursor: pointer; }
+.proj-item:hover:not(:disabled) { background: var(--surf); }
+.proj-item.cur { background: var(--acc-bg); }
+.proj-item:disabled { cursor: default; opacity: 0.6; }
+.proj-item .ic { flex: none; padding-top: 2px; }
+.proj-item .b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.proj-item .nm { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proj-item .sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proj-item .sub .path { font-family: var(--mono); }
+.proj-empty { padding: 14px 8px; font-size: 12.5px; color: var(--muted); text-align: center; }
+.proj-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 8px 0; margin-top: 6px; border-top: 1px solid var(--line2); }
 .hdr-sep { width: 1px; height: 30px; background: var(--line); flex: none; }
 .hdr-info {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; height: 46px; padding: 5px 10px; border-radius: 8px;

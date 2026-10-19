@@ -24,6 +24,14 @@
 .cp-panel { outline: none; }
 /* 화면설계서 패널 폭(580/1348)에 맞춰 조금 넓힘: 1440에서 576px, 기본 맥락 칩 5개가 한 줄에 들어감 */
 .chat-panel.cp-panel { width: clamp(460px, 40vw, 640px); }
+/* 크게 보기: 같은 패널을 화면 가운데 큰 창으로 (상태를 그대로 두려고 자리를 옮기지 않고 모양만 바꾼다) */
+.chat-panel.cp-panel.expanded {
+  position: fixed; inset: 0; margin: auto; z-index: 61; width: min(1120px, calc(100vw - 48px)); height: min(900px, calc(100vh - 48px));
+  max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); border: 1px solid #bcc5cf; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 24px 56px rgba(31, 41, 51, 0.3);
+}
+.cp-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(31, 41, 51, 0.35); }
+.cp-ibtn.on { background: var(--acc-bg); }
 .cp-head { position: relative; flex: none; display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); }
 .cp-head-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .cp-title { font-size: 14.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -82,10 +90,15 @@
   overflow: auto; max-height: 360px; white-space: pre; color: var(--ink); position: relative;
 }
 .cp-md pre .lang { position: absolute; top: 4px; right: 8px; font-size: 10.5px; color: var(--faint); font-family: var(--sans); }
-.cp-md .tblw { overflow: auto; border: 1px solid var(--line); border-radius: 8px; max-width: 100%; }
-.cp-md table { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
-.cp-md th { text-align: left; padding: 5px 8px; background: var(--surf); border-bottom: 1px solid var(--line); font-weight: 600; color: var(--muted); white-space: nowrap; }
+/* 표: 칸을 대화 폭에 억지로 맞추지 않고(글자가 한 자씩 끊기던 문제) 글 길이대로 넓히고 표 안에서 좌우로 스크롤.
+   한 칸은 최대 26em까지 넓어지고 그보다 긴 글은 그 안에서 줄을 바꾼다 */
+.cp-md .tblw { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: 8px; max-width: 100%; white-space: normal; }
+.cp-md table { border-collapse: collapse; font-size: 12.5px; width: max-content; min-width: 100%; }
+.cp-md th { text-align: left; padding: 5px 8px; background: var(--surf); border-bottom: 1px solid var(--line); font-weight: 600; color: var(--muted); }
 .cp-md td { padding: 5px 8px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+.cp-md th > .c, .cp-md td > .c { max-width: 26em; overflow-wrap: break-word; word-break: keep-all; }
+.cp-md th > .c { max-width: 16em; }
+.cp-md td > .c code { overflow-wrap: break-word; }
 .cp-md tr:last-child td { border-bottom: none; }
 .cp-md a.ext { color: var(--acc-d); text-decoration: underline; text-decoration-color: var(--acc-line); cursor: pointer; }
 .cp-ident { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--ink); }
@@ -218,6 +231,15 @@
 .cp-input-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .cp-input-bar .hint { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cp-input-bar .cnt { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* 모델 고르기 (입력창 아래): 고른 모델 이름에 맞춘 너비 */
+.cp-model {
+  field-sizing: content; flex: 0 1 auto; min-width: 0; max-width: 170px; height: 26px; padding: 0 18px 0 7px; border: 1px solid transparent; border-radius: 6px;
+  font-family: inherit; font-size: 12px; color: var(--ink2); cursor: pointer; text-overflow: ellipsis; appearance: none; -webkit-appearance: none;
+  background: transparent url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239aa5b1' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 5px center;
+}
+.cp-model:hover:not(:disabled) { border-color: var(--line); background-color: #fff; color: var(--ink); }
+.cp-model:focus-visible { outline: 2px solid var(--acc-line); outline-offset: 1px; }
+.cp-model:disabled { cursor: default; opacity: 0.6; }
 .cp-seg { flex: none; display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--surf2); }
 .cp-seg button {
   flex: none; height: 22px; padding: 0 10px; border: none; border-radius: 6px; font-size: 12.5px; white-space: nowrap; background: transparent; color: var(--muted); font-weight: 500;
@@ -240,9 +262,15 @@
 .cp-pop-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px 14px; border-bottom: 1px solid var(--line2); }
 .cp-pop-h b { font-size: 13.5px; }
 .cp-pop-list { overflow: auto; padding: 4px; display: flex; flex-direction: column; }
-.cp-pop-item { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-radius: 6px; border: none; background: none; text-align: left; width: 100%; }
-.cp-pop-item:hover { background: var(--surf); }
-.cp-pop-item.cur { background: var(--acc-bg); }
+.cp-pop-row { display: flex; align-items: stretch; border-radius: 6px; }
+.cp-pop-row:hover { background: var(--surf); }
+.cp-pop-row.cur { background: var(--acc-bg); }
+.cp-pop-item { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 7px 4px 7px 10px; border-radius: 6px; border: none; background: none; text-align: left; cursor: pointer; }
+.cp-pop-del { flex: none; width: 30px; border: none; background: none; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; display: flex; align-items: center; justify-content: center; }
+.cp-pop-row:hover .cp-pop-del, .cp-pop-del:focus-visible { opacity: 1; }
+.cp-pop-del:hover { color: var(--err); background: var(--err-bg); }
+.cp-pop-f { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px 9px 14px; border-top: 1px solid var(--line2); font-size: 12px; }
+.cp-linkbtn.danger { color: var(--err); }
 .cp-pop-item .t { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0; }
 .cp-pop-item .t span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .cp-pop-item .m { font-size: 11.5px; color: var(--muted); }

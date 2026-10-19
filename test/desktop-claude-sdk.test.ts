@@ -299,7 +299,7 @@ test('쉬었다가(프로세스를 닫음) 다시 보내면 resume으로 이어 
   const sid = (await call('claude.get', conv.id))!.sessionId!;
   assert.ok(sid);
   // 앱을 다시 시작한 것처럼 메모리에서 지운다
-  claudeModule().manager._forget(conv.id);
+  await claudeModule().manager._forget(conv.id);
   await call('claude.send', conv.id, '둘');
   await waitFor(() => items(conv.id).some((i) => i.type === 'assistant' && i.text === '둘째 답') && !lastState(conv.id)?.running, 20000, 'turn 2');
   const starts = logLines(log).filter((x) => x.ev === 'start');
@@ -307,7 +307,7 @@ test('쉬었다가(프로세스를 닫음) 다시 보내면 resume으로 이어 
   assert.ok(starts[1].argv.includes(`--resume=${sid}`), starts[1].argv.join(' '));
 
   // 세션 기록이 없어진 경우 (실제 CLI: "No conversation found with session ID")
-  claudeModule().manager._forget(conv.id);
+  await claudeModule().manager._forget(conv.id);
   fs.rmSync(process.env.PA_FAKE_STATE_DIR!, { recursive: true, force: true });
   process.env.PA_FAKE_STRICT_RESUME = '1';
   process.env.PA_FAKE_SCENARIO = JSON.stringify({ default: [{ say: '새 세션 답' }] });
@@ -346,4 +346,38 @@ test('API 오류 분류: 인증·한도·결제·오프라인 → error 항목�
   await call('claude.send', conv.id, '질문');
   await waitFor(() => !lastState(conv.id)?.running && items(conv.id).some((i) => i.type === 'assistant'), 20000, 'ok');
   await waitFor(() => events.filter((e) => e.type === 'claude.status').pop()?.type === 'claude.status' && (events.filter((e) => e.type === 'claude.status').pop() as Extract<DesktopEvent, { type: 'claude.status' }>).status.state === 'on', 5000, 'status on');
+});
+
+test('모델: 실제 SDK + 가짜 CLI — initialize의 모델 목록, --model로 시작, set_model로 바꾸기, system/init의 모델', { timeout: 60000 }, async () => {
+  const log = path.join(tmp, 'fake-model.jsonl');
+  process.env.PA_FAKE_LOG = log;
+  process.env.PA_FAKE_SCENARIO = JSON.stringify({ default: [{ say: '네' }] });
+  const list = await call('claude.models', true);
+  assert.equal(list.error, undefined, list.error);
+  assert.equal(list.defaultName, 'Default (recommended)');
+  assert.equal(list.defaultDescription, 'Fake Sonnet · 시험용 기본 모델');
+  assert.deepEqual(list.models.map((m) => [m.value, m.name]), [['fake-opus', 'Fake Opus'], ['fake-haiku', 'Fake Haiku']]);
+  // 목록만 받는 실행은 사용자 메시지를 보내지 않는다 (API 요청 없음)
+  const listRun = logLines(log).filter((x) => x.ev === 'start').pop()!;
+  assert.ok(!logLines(log).some((x) => x.ev === 'user' && x.pid === listRun.pid));
+
+  const conv = await call('claude.start', FIXTURE, { model: 'fake-opus' });
+  await call('claude.send', conv.id, '하나');
+  await waitFor(() => !lastState(conv.id)?.running && items(conv.id).some((i) => i.type === 'assistant'), 20000, 'turn 1');
+  const start = logLines(log).filter((x) => x.ev === 'start').pop()!;
+  assert.ok(start.argv.join(' ').includes('--model fake-opus') || start.argv.includes('--model=fake-opus'), start.argv.join(' '));
+  await waitFor(() => lastState(conv.id)?.activeModel === 'fake-opus', 5000, 'activeModel fake-opus');
+
+  await call('claude.setModel', conv.id, 'fake-haiku');
+  await waitFor(() => logLines(log).some((x) => x.ev === 'set_model' && x.model === 'fake-haiku'), 5000, 'set_model');
+  await call('claude.send', conv.id, '둘');
+  await waitFor(() => !lastState(conv.id)?.running && items(conv.id).filter((i) => i.type === 'assistant').length >= 2, 20000, 'turn 2');
+  await waitFor(() => lastState(conv.id)?.activeModel === 'fake-haiku', 5000, 'activeModel fake-haiku');
+  assert.equal(logLines(log).filter((x) => x.ev === 'start' && x.pid !== listRun.pid).length, 1, '모델을 바꿔도 같은 프로세스로 이어 감');
+  // 기본값으로 되돌리면 별칭 default가 가리키는 모델
+  await call('claude.setModel', conv.id, '');
+  await call('claude.send', conv.id, '셋');
+  await waitFor(() => !lastState(conv.id)?.running && items(conv.id).filter((i) => i.type === 'assistant').length >= 3, 20000, 'turn 3');
+  await waitFor(() => lastState(conv.id)?.activeModel === 'fake-sonnet', 5000, 'activeModel default');
+  delete process.env.PA_FAKE_LOG;
 });

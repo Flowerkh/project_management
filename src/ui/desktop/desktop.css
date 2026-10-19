@@ -22,8 +22,6 @@
 
 /* 눌린 상단 버튼 (이력·Claude) */
 .btn.pressed { background: var(--acc-bg); border-color: var(--acc-line); }
-.proj-chip.click { cursor: pointer; }
-.proj-chip.click:hover { border-color: var(--acc-line); background: var(--acc-bg); }
 
 /* POP-04 프로젝트 연결 */
 .modal.xl { width: min(1060px, calc(100vw - 40px)); max-height: calc(100vh - 80px); }

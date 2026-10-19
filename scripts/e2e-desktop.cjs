@@ -242,7 +242,7 @@ async function main() {
   });
 
   await step('DB 연결(POP-04)', async () => {
-    await win.click('button.proj-chip');
+    await win.click('button.proj-link');
     await win.waitForSelector('[role="dialog"][aria-label="프로젝트 연결"]', { timeout: 10000 });
     await win.click('button:has-text("DB 추가")');
     const dlg = win.locator('[role="dialog"]:has-text("DB 연결 추가")').last();

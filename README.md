@@ -3,9 +3,9 @@
 프로젝트 폴더를 불러와 **[Run]** 을 누르면 어떤 시스템인지와 **DB 테이블·메뉴·화면·배치**의 관계를 정리해 보여 주는 분석 도구입니다.
 Windows 데스크톱 앱(Electron)과 파일 하나짜리 HTML로 동작하고, 분석은 인터넷 없이 PC 안에서 끝납니다.
 
-- 현재 버전: **v0.4** (프로토타입)
+- 현재 버전: **v0.5** (프로토타입) · 버전별 변경은 [CHANGELOG.md](CHANGELOG.md)
   - 분석 엔진·결과 화면 (Java·JSP·MyBatis, PHP, Go, Python, Android·React Native·Flutter, 셸·배치)
-  - 데스크톱 앱: Claude 연동(대화형 이슈 처리·수정·새 프로젝트), 형상관리(Git·SVN)·작업 이력, DB 연결(조회 도구·쿼리 확인 실행·메뉴 DB 읽기)
+  - 데스크톱 앱: Claude 연동(대화형 이슈 처리·수정·새 프로젝트, 모델 선택), 형상관리(Git·SVN)·작업 이력, DB 연결(조회 도구·쿼리 확인 실행·메뉴 DB 읽기)
 - 다음: Excel·HTML 보고서 내보내기, JavaScript(Express·NestJS·React·Vue) 화면 추출, AI 요약
 
 ## 분석 대상
@@ -72,7 +72,12 @@ npx tsx scripts/analyze.ts <폴더>  # 명령줄 분석 (결과 JSON)
 
 통합 점검(리눅스, xvfb): `node scripts/build-desktop.mjs --dev --out /tmp/pa/app` 뒤
 `xvfb-run -a node scripts/e2e-desktop.cjs /tmp/pa/app /tmp/pa/e2e` (분석 → Claude(가짜 CLI) → DB(MariaDB) → 변경 적용·커밋·푸시 → 쿼리 실행 → 되돌리기),
-`scripts/e2e-newproject.cjs` (새 프로젝트).
+`scripts/e2e-newproject.cjs` (새 프로젝트), `scripts/e2e-ui.cjs` (버전 표시·프로젝트 목록·모델 선택·표·크게 보기·대화 지우기).
+
+## 버전
+
+`package.json`과 `desktop/package.json`의 version을 같이 올리고(`npm version <버전> --no-git-tag-version`을 두 폴더에서 — package-lock.json도 함께 바뀜),
+[CHANGELOG.md](CHANGELOG.md)에 바뀐 내용을 적습니다. 앱 상단에 `v0.5`처럼 보입니다(끝자리가 0이면 생략).
 
 ## 원칙
 

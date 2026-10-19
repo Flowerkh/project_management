@@ -25,6 +25,8 @@
 //   PA_FAKE_STRICT_RESUME=1  모르는 --resume 세션이면 실제 CLI처럼 "No conversation found…"로 끝남
 //   PA_FAKE_DELAY        글자 스트리밍 간격 ms (기본 8)
 //   PA_FAKE_VERSION      --version 결과 (기본 2.1.302)
+//   PA_FAKE_MODELS       initialize의 모델 목록 JSON (기본: default→fake-sonnet, fake-opus, fake-haiku)
+//                        --model·set_model로 고른 모델이 system/init·assistant의 model로 나간다 (별칭은 resolvedModel로)
 //
 // 시나리오 형식
 //   {
@@ -84,6 +86,24 @@ const stdioPermissions = args['permission-prompt-tool'] === 'stdio';
 const isProbe = !!args['no-session-persistence'] && args['max-turns'] === '1';
 let mode = typeof args['permission-mode'] === 'string' ? args['permission-mode'] : 'default';
 const prePlanMode = 'default';
+const DEFAULT_MODELS = [
+  { value: 'default', resolvedModel: 'fake-sonnet', displayName: 'Default (recommended)', description: 'Fake Sonnet · 시험용 기본 모델' },
+  { value: 'fake-opus', displayName: 'Fake Opus', description: '시험용 큰 모델' },
+  { value: 'fake-haiku', displayName: 'Fake Haiku', description: '시험용 빠른 모델' },
+];
+let MODELS = DEFAULT_MODELS;
+try {
+  if (process.env.PA_FAKE_MODELS) MODELS = JSON.parse(process.env.PA_FAKE_MODELS);
+} catch {
+  // 기본 목록
+}
+/** 고른 모델 (별칭이면 실제 이름으로) */
+let model = 'default';
+const resolveModel = (m) => {
+  const v = m || 'default';
+  return MODELS.find((x) => x.value === v)?.resolvedModel ?? (v === 'default' ? 'fake-sonnet' : v);
+};
+if (typeof args.model === 'string' && args.model) model = args.model;
 const cwd = process.cwd();
 const delay = Number(process.env.PA_FAKE_DELAY ?? 8) || 0;
 const BASE_TOOLS = ['Task', 'Bash', 'Glob', 'Grep', 'LS', 'ExitPlanMode', 'Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'TodoWrite', 'WebFetch', 'WebSearch'];
@@ -286,7 +306,7 @@ function handleControl(msg) {
         agents: [],
         output_style: 'default',
         available_output_styles: ['default'],
-        models: [{ value: 'fake', displayName: 'Fake', description: '시험용' }],
+        models: MODELS,
         account: {},
         pid: process.pid,
         pending_permission_requests: [],
@@ -296,6 +316,11 @@ function handleControl(msg) {
     case 'set_permission_mode':
       mode = req.mode;
       log({ ev: 'mode', mode });
+      reply(msg.request_id, {});
+      return;
+    case 'set_model':
+      model = typeof req.model === 'string' && req.model ? req.model : 'default';
+      log({ ev: 'set_model', model: req.model ?? null });
       reply(msg.request_id, {});
       return;
     case 'interrupt':
@@ -354,7 +379,7 @@ function emitInit() {
     session_id: sessionId,
     tools: [...builtinTools, ...mcpServers.flatMap((s) => ['db_list', 'db_select', 'db_propose_change'].map((t) => `mcp__${s}__${t}`))],
     mcp_servers: mcpServers.map((name) => ({ name, status: 'connected', source: 'sdk' })),
-    model: 'fake-model',
+    model: resolveModel(model),
     permissionMode: mode,
     slash_commands: [],
     apiKeySource: process.env.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'none',
@@ -451,7 +476,7 @@ function streamEvent(event) {
 async function say(text) {
   const id = `msg_${rid()}`;
   if (partial) {
-    streamEvent({ type: 'message_start', message: { id, type: 'message', role: 'assistant', model: 'fake-model', content: [], stop_reason: null, usage: zeroUsage() } });
+    streamEvent({ type: 'message_start', message: { id, type: 'message', role: 'assistant', model: resolveModel(model), content: [], stop_reason: null, usage: zeroUsage() } });
     streamEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
     const chars = Array.from(text);
     for (let i = 0; i < chars.length; i += 6) {
@@ -462,7 +487,7 @@ async function say(text) {
     streamEvent({ type: 'content_block_stop', index: 0 });
   }
   if (interrupted) throw new StopTurn();
-  out({ type: 'assistant', message: { id, type: 'message', role: 'assistant', model: 'fake-model', content: [{ type: 'text', text }], stop_reason: null, usage: zeroUsage() }, parent_tool_use_id: null, session_id: sessionId, uuid: uuid() });
+  out({ type: 'assistant', message: { id, type: 'message', role: 'assistant', model: resolveModel(model), content: [{ type: 'text', text }], stop_reason: null, usage: zeroUsage() }, parent_tool_use_id: null, session_id: sessionId, uuid: uuid() });
   if (partial) {
     streamEvent({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } });
     streamEvent({ type: 'message_stop' });
@@ -579,12 +604,12 @@ async function runTool(name, rawInput, step) {
   const input = normalizeInput(name, rawInput);
   const msgId = `msg_${rid()}`;
   if (partial) {
-    streamEvent({ type: 'message_start', message: { id: msgId, type: 'message', role: 'assistant', model: 'fake-model', content: [], stop_reason: null, usage: zeroUsage() } });
+    streamEvent({ type: 'message_start', message: { id: msgId, type: 'message', role: 'assistant', model: resolveModel(model), content: [], stop_reason: null, usage: zeroUsage() } });
     streamEvent({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id, name, input: {} } });
     streamEvent({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } });
     streamEvent({ type: 'content_block_stop', index: 0 });
   }
-  out({ type: 'assistant', message: { id: msgId, type: 'message', role: 'assistant', model: 'fake-model', content: [{ type: 'tool_use', id, name, input }], stop_reason: null, usage: zeroUsage() }, parent_tool_use_id: null, session_id: sessionId, uuid: uuid() });
+  out({ type: 'assistant', message: { id: msgId, type: 'message', role: 'assistant', model: resolveModel(model), content: [{ type: 'tool_use', id, name, input }], stop_reason: null, usage: zeroUsage() }, parent_tool_use_id: null, session_id: sessionId, uuid: uuid() });
   if (partial) {
     streamEvent({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 1 } });
     streamEvent({ type: 'message_stop' });

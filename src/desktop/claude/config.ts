@@ -136,6 +136,18 @@ function cleanShellAllow(list: unknown): string[] {
   return out;
 }
 
+/**
+ * 모델 값: 별칭(sonnet)·모델 이름(claude-…)·[1m] 같은 붙임·회사 클라우드 모델 ID(ARN 등)까지.
+ * 비우면 undefined (Claude Code 기본값). 쓸 수 없는 글자가 있으면 오류
+ */
+export function cleanModel(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const s = v.trim();
+  if (!s) return undefined;
+  if (s.length > 200 || !/^[A-Za-z0-9._:/@[\]+-]+$/.test(s)) throw new DesktopError('모델 이름이 올바르지 않습니다 (영문·숫자·. - _ : / @ [ ] 만)', 'invalid');
+  return s;
+}
+
 export interface SetResult {
   config: ClaudeConfig;
   /** 처음 켬 (또는 다시 켬) */
@@ -156,7 +168,7 @@ export async function setConfig(input: ClaudeConfigInput): Promise<SetResult> {
     shellAllow: cleanShellAllow(input.shellAllow),
     aiSummary: !!input.aiSummary,
   });
-  next.model = typeof input.model === 'string' && input.model.trim() ? input.model.trim().slice(0, 120) : undefined;
+  next.model = cleanModel(input.model);
   next.cliPath = typeof input.cliPath === 'string' && input.cliPath.trim() ? path.resolve(input.cliPath.trim()) : undefined;
 
   // API 키: undefined → 그대로, '' → 지움

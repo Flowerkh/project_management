@@ -234,7 +234,7 @@ test('계획 모드: 수정은 훅이 거부 → ExitPlanMode 승인([수정 진
   assert.equal(act.items[1].line, 4);
   assert.equal(lastState(conv.id)!.mode, 'edit');
   // 다음에 열 때는 수정 허용 모드로
-  claudeModule().manager._forget(conv.id);
+  await claudeModule().manager._forget(conv.id);
   handler = (t) => {
     t.emit(init());
     t.emit(result());
@@ -533,4 +533,85 @@ test('내보내기(Markdown)·삭제', async () => {
   assert.equal(await call('claude.get', conv.id), null);
   assert.ok(!(await call('claude.list', project)).some((x) => x.id === conv.id));
   assert.equal(await call('claude.get', '../../etc/passwd'), null);
+});
+
+test('모델: 목록(Claude Code initialize), 대화별 모델·기본 모델, 대화 중 바꾸기(setModel)와 안내, 실제 모델 표시', async () => {
+  // 목록: default는 '기본값' 칸의 이름으로, 나머지는 고를 수 있는 모델로
+  const list = await call('claude.models');
+  assert.equal(list.error, undefined);
+  assert.equal(list.defaultName, 'Default (recommended)');
+  assert.deepEqual(list.models.map((m) => m.value), ['test-opus', 'test-haiku']);
+  assert.equal(list.models[0].name, 'Test Opus');
+  const opened = fq.calls.options.length;
+  assert.deepEqual(await call('claude.models'), list, '두 번째는 기억한 목록');
+  assert.equal(fq.calls.options.length, opened, '다시 띄우지 않음');
+
+  handler = (t) => {
+    t.emit(init({ model: t.model() }));
+    t.emit(result());
+  };
+  // 대화에서 고른 모델로 연다
+  const c1 = await call('claude.start', project, { model: 'test-opus' });
+  assert.equal(c1.model, 'test-opus');
+  await call('claude.send', c1.id, '하나');
+  await idle(c1.id);
+  assert.equal(fq.calls.options.at(-1)!.model, 'test-opus');
+  await waitFor(() => lastState(c1.id)?.activeModel === 'test-opus', 2000, 'activeModel');
+  assert.equal((await call('claude.get', c1.id))!.activeModel, 'test-opus');
+
+  // 열린 대화에서 바꾸면 setModel로 알리고 안내를 남긴다. 다음 응답은 새 모델
+  await call('claude.setModel', c1.id, 'test-haiku');
+  assert.deepEqual(fq.calls.setModel.slice(-1), ['test-haiku']);
+  assert.ok(items(c1.id).some((i) => i.type === 'notice' && /모델을 Test Haiku\(으\)로 바꿨습니다/.test(i.text)));
+  assert.equal(lastState(c1.id)!.model, 'test-haiku');
+  await call('claude.send', c1.id, '둘');
+  await idle(c1.id);
+  await waitFor(() => lastState(c1.id)?.activeModel === 'test-haiku', 2000, 'activeModel after setModel');
+  // '' = Claude Code 기본값 (setModel(undefined))
+  await call('claude.setModel', c1.id, '');
+  assert.deepEqual(fq.calls.setModel.slice(-1), [undefined]);
+  assert.ok(items(c1.id).some((i) => i.type === 'notice' && /Claude Code 기본값 \(Default \(recommended\)\)/.test(i.text)));
+  // 같은 모델로 다시 고르면 아무 일 없음
+  const nNotice = items(c1.id).filter((i) => i.type === 'notice').length;
+  await call('claude.setModel', c1.id, '');
+  assert.equal(items(c1.id).filter((i) => i.type === 'notice').length, nNotice);
+
+  // 고르지 않은 대화는 Claude 연결의 기본 모델을 따른다
+  await setConfig({ enabled: true, authMode: 'login', shellAllow: ['mvn -q compile'], aiSummary: false, model: 'test-opus' });
+  const c2 = await call('claude.start', project, {});
+  assert.equal(c2.model, undefined);
+  await call('claude.send', c2.id, '셋');
+  await idle(c2.id);
+  assert.equal(fq.calls.options.at(-1)!.model, 'test-opus');
+  // 닫혀 있는 대화의 모델을 바꾸면 다음에 열 때 그 모델로 (resume)
+  await claudeModule().manager.closeAll();
+  await call('claude.setModel', c2.id, 'test-haiku');
+  await call('claude.send', c2.id, '넷');
+  await idle(c2.id);
+  const o = fq.calls.options.at(-1)!;
+  assert.equal(o.model, 'test-haiku');
+  assert.equal(o.resume, SESSION);
+  // 쓸 수 없는 글자
+  await assert.rejects(call('claude.setModel', c2.id, 'bad model;rm'), (e: Error & { code?: string }) => e.code === 'invalid');
+  await assert.rejects(setConfig({ enabled: true, authMode: 'login', shellAllow: [], aiSummary: false, model: 'a b' }), /모델 이름/);
+  await setConfig({ enabled: true, authMode: 'login', shellAllow: ['mvn -q compile'], aiSummary: false });
+});
+
+test('프로젝트 대화 모두 지우기 (claude.clear)', async () => {
+  handler = (t) => {
+    t.emit(init());
+    t.emit(result());
+  };
+  const a = await call('claude.start', project, {});
+  await call('claude.send', a.id, '하나');
+  await idle(a.id);
+  const b = await call('claude.start', project, {});
+  const before = (await call('claude.list', project)).length;
+  assert.ok(before >= 2);
+  const n = await call('claude.clear', project);
+  assert.equal(n, before);
+  assert.deepEqual(await call('claude.list', project), []);
+  assert.equal(await call('claude.get', a.id), null);
+  assert.equal(await call('claude.get', b.id), null);
+  await assert.rejects(call('claude.clear', path.join(tmp, 'no-such-folder')));
 });

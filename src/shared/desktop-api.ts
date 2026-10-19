@@ -328,6 +328,7 @@ export interface ClaudeConfig {
   cloud?: { provider: 'bedrock' | 'vertex' | 'foundry'; env: Record<string, string> };
   /** 직접 지정한 claude 실행 파일 경로 (비우면 자동 탐색) */
   cliPath?: string;
+  /** 새 대화의 기본 모델 (claude.models의 value 또는 직접 입력). 비우면 Claude Code 기본값 */
   model?: string;
   /** 회사 프록시 (HTTPS_PROXY) */
   proxy?: string;
@@ -357,6 +358,27 @@ export interface ClaudeStatus {
   code?: ClaudeErrorCode;
   /** (POP-03 ② 연결 확인) 항목별 결과: CLI 설치 → 인터넷 → 인증. ok null = 확인하지 않음(앞 단계 실패·건너뜀) */
   checks?: { cli: ClaudeCheck; network: ClaudeCheck; auth: ClaudeCheck };
+}
+
+/** Claude Code가 알려 준, 이 PC·계정에서 쓸 수 있는 모델 (claude.models) */
+export interface ClaudeModel {
+  /** 대화에 넘기는 값 (별칭 'sonnet' 또는 모델 이름) */
+  value: string;
+  /** 별칭이 가리키는 실제 모델 이름 */
+  resolved?: string;
+  /** 보이는 이름 */
+  name: string;
+  description?: string;
+}
+
+export interface ClaudeModelList {
+  models: ClaudeModel[];
+  /** Claude Code 기본값의 이름·설명 (CLI 목록의 'default' 항목) */
+  defaultName?: string;
+  defaultDescription?: string;
+  /** 목록을 받지 못한 이유 (CLI 없음 등). 그래도 기본값·직접 입력은 쓸 수 있음 */
+  error?: string;
+  at: string;
 }
 
 export interface ClaudeCheck {
@@ -422,6 +444,10 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   mode: ChatMode;
+  /** 이 대화에서 고른 모델 ('' = Claude Code 기본값). 없으면 Claude 연결의 기본 모델을 따름 */
+  model?: string;
+  /** Claude Code가 알려 준 실제로 쓰는 모델 (system/init) */
+  activeModel?: string;
   sessionId?: string;
   workId?: string;
   context?: ChatContext;
@@ -447,6 +473,8 @@ export interface ClaudeStartOptions {
   newProject?: boolean;
   /** 참고할 분석 결과 요약 (새 프로젝트, '같은 구조로') */
   references?: { name: string; text: string }[];
+  /** 이 대화의 모델 ('' = Claude Code 기본값). 없으면 Claude 연결의 기본 모델 */
+  model?: string;
 }
 
 export interface DesktopApi {
@@ -493,9 +521,15 @@ export interface DesktopApi {
   'claude.start'(root: string | null, opts?: ClaudeStartOptions): Conversation;
   'claude.send'(conversationId: string, text: string): void;
   'claude.setMode'(conversationId: string, mode: ChatMode): void;
+  /** 쓸 수 있는 모델 목록 (PC의 Claude Code에서 받음, 설정이 바뀌기 전까지 기억). refresh면 다시 받음 */
+  'claude.models'(refresh?: boolean): ClaudeModelList;
+  /** 대화의 모델 바꾸기 ('' = Claude Code 기본값). 응답 중이면 다음 응답부터 */
+  'claude.setModel'(conversationId: string, model: string): void;
   'claude.interrupt'(conversationId: string): void;
   'claude.respond'(conversationId: string, requestId: string, allow: boolean): void;
   'claude.delete'(conversationId: string): void;
+  /** 이 프로젝트의 대화를 모두 지움 (작업 사본·작업 이력은 그대로). 지운 개수 */
+  'claude.clear'(root: string): number;
   /** 대화 내용을 Markdown 파일로 저장 (F-21). 저장한 경로, 취소하면 false */
   'claude.export'(conversationId: string): string | false;
   /** claude 실행 파일 직접 지정 ([경로 지정]). 고른 경로, 취소하면 null */
@@ -524,7 +558,7 @@ export type Ret<C extends Channel> = Awaited<ReturnType<DesktopApi[C]>>;
 
 export type DesktopEvent =
   | { type: 'claude.item'; conversationId: string; item: ChatItem }
-  | { type: 'claude.state'; conversationId: string; running: boolean; mode: ChatMode; workId?: string; pending?: PendingRequest | null }
+  | { type: 'claude.state'; conversationId: string; running: boolean; mode: ChatMode; workId?: string; pending?: PendingRequest | null; model?: string; activeModel?: string }
   | { type: 'claude.status'; status: ClaudeStatus }
   | { type: 'work.progress'; root: string; done: number; total: number; message?: string }
   | { type: 'history.added'; root: string; entry: HistoryEntry }

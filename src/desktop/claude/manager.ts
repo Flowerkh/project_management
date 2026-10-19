@@ -12,12 +12,13 @@ import { checkRoot } from '../project';
 import { services, type DbSelectAsk } from '../services';
 import { dataDir, newId, nowIso } from '../store';
 import { type ActEntry, applyResult, describeTool, summarize } from './activity';
-import { getStored, type StoredConfig } from './config';
+import { cleanModel, getStored, type StoredConfig } from './config';
 import { deleteConvFile, exportFileName, listConvs, loadConv, publicConv, saveConv, type StoredConversation, toMarkdown, validId } from './conversations';
 import { buildCliEnv, claudeConfigDir } from './env';
 import { type Classified, classifyError } from './errors';
 import { type GuardContext, isPlanFile, MSG_READONLY, permissionDefault, preToolUse, secretDenyRules, SHELL_TOOLS } from './guards';
 import { buildFirstMessage, buildSystemAppend, shortTitle } from './prompt';
+import type { ModelCatalog } from './models';
 import { createSdkMcpServer, InputQueue, type Options, type Query, type QueryFn, tool, userMessage } from './sdk';
 import { type StatusManager, textOf } from './status';
 import { createDbServer, DB_TOOL_NAMES, makeDbHandlers } from './tools';
@@ -35,6 +36,8 @@ export interface ManagerOptions {
   interruptGraceMs?: number;
   createServer?: typeof createSdkMcpServer;
   toolFn?: typeof tool;
+  /** 모델 이름 (모델을 바꿨다는 안내에 씀) */
+  models?: ModelCatalog;
 }
 
 class RunError extends Error {
@@ -96,6 +99,8 @@ class Session {
   apiKeySource?: string;
   guard: GuardContext | null = null;
   cfg: StoredConfig | null = null;
+  /** 열린 CLI가 모델 바꾸기를 못 함 → 다음 메시지 때 새 모델로 다시 연다 */
+  modelStale = false;
   constructor(public conv: StoredConversation) {}
 }
 
@@ -124,6 +129,7 @@ export class ClaudeManager {
   private graceMs: number;
   private createServer: typeof createSdkMcpServer;
   private toolFn: typeof tool;
+  private models: ModelCatalog | undefined;
 
   constructor(o: ManagerOptions) {
     this.queryFn = o.queryFn;
@@ -132,6 +138,7 @@ export class ClaudeManager {
     this.graceMs = o.interruptGraceMs ?? 10000;
     this.createServer = o.createServer ?? createSdkMcpServer;
     this.toolFn = o.toolFn ?? tool;
+    this.models = o.models;
   }
 
   // ---------------------------------------------------------------- 채널
@@ -139,6 +146,8 @@ export class ClaudeManager {
   async start(root: string | null, opts: ClaudeStartOptions = {}): Promise<Conversation> {
     const cfg = await getStored();
     if (!cfg.enabled) throw new DesktopError('Claude 연동이 꺼져 있습니다. Claude 연결에서 켠 뒤 시작해 주세요.', 'off');
+    // 고른 모델 ('' = Claude Code 기본값). 고르지 않았으면 Claude 연결의 기본 모델을 따른다
+    const model = typeof opts.model === 'string' ? (cleanModel(opts.model) ?? '') : undefined;
     const id = newId('c');
     const now = nowIso();
     let cwd: string;
@@ -176,6 +185,7 @@ export class ClaudeManager {
       items: [],
       running: false,
       cwd,
+      ...(model !== undefined ? { model } : {}),
       ...(workId ? { workId } : {}),
       ...(readOnly ? { readOnly } : {}),
       ...(opts.context ? { context: opts.context } : {}),
@@ -216,6 +226,10 @@ export class ClaudeManager {
       await new Promise<void>((r) => s.waiters.push(r));
     }
     this.clearIdle(s);
+    if (s.modelStale) {
+      s.modelStale = false;
+      this.closeQuery(s);
+    }
     const content = s.conv.contextSent ? body : buildFirstMessage(body, s.conv.context, s.conv.references);
     if (s.conv.title === NEW_TITLE || !s.conv.items.some((i) => i.type === 'user')) s.conv.title = shortTitle(body);
     this.addItem(s, { id: newId('u'), type: 'user', text: body, at: nowIso() });
@@ -251,6 +265,28 @@ export class ClaudeManager {
     }
     if (s.conv.mode === mode) return;
     this.switchMode(s, mode, via, true);
+  }
+
+  /** 대화의 모델 바꾸기 ('' = Claude Code 기본값). 열린 CLI에는 바로 알리고(응답 중이면 다음 응답부터), 닫혀 있으면 다음에 열 때 */
+  async setModel(id: string, raw: string): Promise<void> {
+    const model = typeof raw === 'string' ? (cleanModel(raw) ?? '') : '';
+    const s = await this.session(id);
+    const cfg = await getStored();
+    const before = s.conv.model !== undefined ? s.conv.model : (cfg.model ?? '');
+    s.conv.model = model;
+    if (before !== model) {
+      if (s.q) {
+        try {
+          await withTimeout(s.q.setModel(model || undefined), 5000);
+        } catch {
+          // 이 CLI가 모델 바꾸기를 못 하면 다음 메시지 때 새 모델로 다시 연다 (대화는 이어 감)
+          s.modelStale = true;
+        }
+      }
+      this.addNotice(s, `모델을 ${this.models?.label(model) ?? (model || 'Claude Code 기본값')}(으)로 바꿨습니다${s.running ? ' · 다음 응답부터 적용됩니다' : ''}`);
+    }
+    this.emitState(s);
+    this.scheduleSave(s);
   }
 
   async interrupt(id: string): Promise<void> {
@@ -303,6 +339,15 @@ export class ClaudeManager {
       this.sessions.delete(id);
     }
     await deleteConvFile(id);
+  }
+
+  /** 프로젝트의 대화를 모두 지움 (열려 있는 대화는 멈추고 닫음) */
+  async clear(root: string): Promise<number> {
+    const r = checkRoot(root);
+    const ids = new Set((await listConvs(r)).map((c) => c.id));
+    for (const s of this.sessions.values()) if (s.conv.root && path.resolve(s.conv.root) === r) ids.add(s.conv.id);
+    for (const id of ids) await this.delete(id);
+    return ids.size;
   }
 
   async exportMarkdown(id: string): Promise<string | false> {
@@ -469,7 +514,8 @@ export class ClaudeManager {
         s.stderr = (s.stderr + d).slice(-4000);
       },
       ...(s.conv.sessionId ? { resume: s.conv.sessionId } : {}),
-      ...(cfg.model ? { model: cfg.model } : {}),
+      // 대화에서 고른 모델 ('' = Claude Code 기본값), 고르지 않았으면 Claude 연결의 기본 모델
+      ...((s.conv.model ?? cfg.model) ? { model: s.conv.model ?? cfg.model } : {}),
     };
     s.stderr = '';
     s.resumeAttempt = !!s.conv.sessionId;
@@ -597,6 +643,12 @@ export class ClaudeManager {
       if (typeof m.session_id === 'string' && m.session_id && m.session_id !== s.conv.sessionId) {
         s.conv.sessionId = m.session_id;
         this.scheduleSave(s);
+      }
+      // 실제로 쓰는 모델 (별칭·기본값이 가리키는 모델 이름)
+      if (typeof m.model === 'string' && m.model && m.model !== s.conv.activeModel) {
+        s.conv.activeModel = m.model;
+        this.scheduleSave(s);
+        this.emitState(s);
       }
       if (s.cfg) this.status.noteInit(s.cfg, m);
       return;
@@ -975,7 +1027,16 @@ export class ClaudeManager {
   }
 
   private emitState(s: Session): void {
-    emit({ type: 'claude.state', conversationId: s.conv.id, running: s.running, mode: s.conv.mode, workId: s.conv.workId, pending: s.pendings[0]?.req ?? null });
+    emit({
+      type: 'claude.state',
+      conversationId: s.conv.id,
+      running: s.running,
+      mode: s.conv.mode,
+      workId: s.conv.workId,
+      pending: s.pendings[0]?.req ?? null,
+      ...(s.conv.model !== undefined ? { model: s.conv.model } : {}),
+      ...(s.conv.activeModel ? { activeModel: s.conv.activeModel } : {}),
+    });
   }
 
   private scheduleSave(s: Session): void {
@@ -1002,9 +1063,13 @@ export class ClaudeManager {
   }
 
   /** 시험용: 메모리에서만 지운다 (앱 다시 시작 흉내) */
-  _forget(id: string): void {
+  /** 시험용: 메모리의 대화를 잊는다 (저장을 마친 뒤 — 다음에 파일에서 다시 읽음) */
+  async _forget(id: string): Promise<void> {
     const s = this.sessions.get(id);
-    if (s) this.closeQuery(s);
+    if (s) {
+      this.closeQuery(s);
+      await this.saveNow(s);
+    }
     this.sessions.delete(id);
   }
 }

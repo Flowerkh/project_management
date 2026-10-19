@@ -3,16 +3,23 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { AnalysisResult } from '../../engine/types';
 import { fmtNum, langColor } from '../format';
 import { Icon, Logo } from '../icons';
+import type { RecentItem } from '../recent';
 import { Tag } from './common';
 import { ConfTag } from './common';
+
+declare const __APP_VERSION__: string | undefined;
+/** 화면에 보이는 버전: 0.5.0 → v0.5, 0.5.1 → v0.5.1 */
+export const APP_VERSION = typeof __APP_VERSION__ === 'string' ? `v${__APP_VERSION__.replace(/\.0$/, '')}` : '';
+
+export type HeaderPopover = 'lang' | 'db' | 'proj';
 
 export function Header(props: {
   result: AnalysisResult | null;
   projectName?: string;
   running: boolean;
   canRun: boolean;
-  popover: 'lang' | 'db' | null;
-  setPopover: (p: 'lang' | 'db' | null) => void;
+  popover: HeaderPopover | null;
+  setPopover: (p: HeaderPopover | null) => void;
   onOpenFolder: () => void;
   onRun: () => void;
   onStop: () => void;
@@ -21,20 +28,30 @@ export function Header(props: {
   onOpenFile: (fileId: string, line?: number) => void;
   /** 데스크톱 앱: [이력]·[Claude] 버튼 (Run과 설정 사이) */
   extras?: ComponentChildren;
-  /** 데스크톱 앱: 프로젝트 이름을 누르면 프로젝트 연결(POP-04) */
+  /** 데스크톱 앱: 프로젝트 이름 옆 연결 아이콘 → 프로젝트 연결(POP-04) */
   onProjectChip?: () => void;
+  /** 프로젝트 이름을 누르면 펼치는 최근 분석한 프로젝트 (고르면 그 결과를 연다) */
+  recent?: RecentItem[];
+  /** 지금 연 프로젝트의 폴더 (목록에서 표시) */
+  currentRoot?: string;
+  onOpenRecent?: (key: string) => void;
+  /** 목록을 펼칠 때 (최신 목록 다시 읽기) */
+  onProjectMenu?: () => void;
 }) {
   const r = props.result;
   const langs = r ? r.languages.filter((l) => l.name !== 'Other').slice(0, 3) : [];
   const db = r?.databases[0];
   const dbLabel = db ? `${db.type}${r!.databases.length > 1 ? ` +${r!.databases.length - 1}` : ''}${db.access[0] ? ` · ${db.access[0].replace(/\s*\(.*\)$/, '').replace(/ 매퍼$/, '')}` : ''}` : r ? '감지 안 됨' : '—';
   const wrap = useRef<HTMLDivElement>(null);
+  const projWrap = useRef<HTMLDivElement>(null);
 
   // 바깥을 누르면 팝오버 닫기
   useEffect(() => {
     if (!props.popover) return;
     const onDown = (e: MouseEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) props.setPopover(null);
+      const t = e.target as Node;
+      if (wrap.current?.contains(t) || projWrap.current?.contains(t)) return;
+      props.setPopover(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') props.setPopover(null);
@@ -52,20 +69,56 @@ export function Header(props: {
       <button type="button" class="brand" style={{ border: 'none', background: 'none', padding: 0 }} onClick={props.onHome} title="처음 화면으로">
         <Logo />
         <span class="brand-name">프로젝트 분석 시스템</span>
+        {APP_VERSION && <span class="brand-ver">{APP_VERSION}</span>}
       </button>
-      {props.projectName &&
-        (props.onProjectChip ? (
-          <button type="button" class="proj-chip click" title={`${props.projectName} · 프로젝트 연결(형상관리·DB)`} onClick={props.onProjectChip}>
-            <Icon name="folder" size={14} color="var(--icon)" />
-            <span class="ellipsis">{props.projectName}</span>
-            <Icon name="chev_down" size={13} color="var(--muted)" />
-          </button>
-        ) : (
-          <span class="proj-chip" title={props.projectName}>
-            <Icon name="folder" size={14} color="var(--icon)" />
-            <span class="ellipsis">{props.projectName}</span>
-          </span>
-        ))}
+      {props.projectName && (
+        <div ref={projWrap} class="proj-wrap">
+          {props.onOpenRecent ? (
+            <button
+              type="button"
+              class={`proj-chip click${props.popover === 'proj' ? ' on' : ''}`}
+              title={`${props.projectName} · 누르면 분석했던 프로젝트로 바꿀 수 있습니다`}
+              aria-haspopup="dialog"
+              aria-expanded={props.popover === 'proj'}
+              onClick={() => {
+                if (props.popover !== 'proj') props.onProjectMenu?.();
+                props.setPopover(props.popover === 'proj' ? null : 'proj');
+              }}
+            >
+              <Icon name="folder" size={14} color="var(--icon)" />
+              <span class="ellipsis">{props.projectName}</span>
+              <Icon name="chev_down" size={13} color="var(--muted)" />
+            </button>
+          ) : (
+            <span class="proj-chip" title={props.projectName}>
+              <Icon name="folder" size={14} color="var(--icon)" />
+              <span class="ellipsis">{props.projectName}</span>
+            </span>
+          )}
+          {props.onProjectChip && (
+            <button type="button" class="proj-link" aria-label="프로젝트 연결" title="프로젝트 연결 (형상관리·DB)" onClick={props.onProjectChip}>
+              <Icon name="link" size={16} color="var(--ink2)" />
+            </button>
+          )}
+          {props.popover === 'proj' && (
+            <ProjectPopover
+              recent={props.recent ?? []}
+              projectName={props.projectName}
+              currentRoot={props.currentRoot}
+              running={props.running}
+              onPick={(k) => {
+                props.setPopover(null);
+                props.onOpenRecent?.(k);
+              }}
+              onOpenFolder={() => {
+                props.setPopover(null);
+                props.onOpenFolder();
+              }}
+              onClose={() => props.setPopover(null)}
+            />
+          )}
+        </div>
+      )}
       <span class="hdr-sep" />
       <div ref={wrap} class="row" style={{ gap: '4px' }}>
         <div style={{ position: 'relative' }}>
@@ -135,6 +188,65 @@ export function Header(props: {
         </button>
       </div>
     </header>
+  );
+}
+
+function shortRoot(p: string): string {
+  const sep = p.includes('\\') ? '\\' : '/';
+  const parts = p.split(/[\\/]+/).filter(Boolean);
+  return parts.length <= 3 ? p : `…${sep}${parts.slice(-3).join(sep)}`;
+}
+
+function when(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const today = new Date().toDateString() === d.toDateString();
+  return `${today ? '오늘' : `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+}
+
+/** 프로젝트 이름을 누르면: 최근 분석한 프로젝트 (고르면 저장된 결과를 열고, 폴더가 있으면 다시 연결) */
+function ProjectPopover(props: { recent: RecentItem[]; projectName: string; currentRoot?: string; running: boolean; onPick: (key: string) => void; onOpenFolder: () => void; onClose: () => void }) {
+  const isCur = (r: RecentItem) => (r.root ? !!props.currentRoot && r.root === props.currentRoot : r.name === props.projectName);
+  return (
+    <div class="popover proj-pop" role="dialog" aria-label="분석했던 프로젝트">
+      <div class="pop-title">
+        <b>분석했던 프로젝트</b>
+        <span class="muted" style={{ marginLeft: 'auto', fontSize: '12px' }}>
+          최근 {props.recent.length}개
+        </span>
+      </div>
+      <div class="proj-list">
+        {!props.recent.length && <div class="proj-empty">아직 저장된 분석 결과가 없습니다.</div>}
+        {props.recent.map((r) => {
+          const cur = isCur(r);
+          return (
+            <button
+              type="button"
+              key={r.key}
+              class={`proj-item${cur ? ' cur' : ''}`}
+              disabled={props.running}
+              title={props.running ? '분석 중에는 바꿀 수 없습니다' : r.root ?? r.name}
+              onClick={() => (cur ? props.onClose() : props.onPick(r.key))}
+            >
+              <span class="ic">{cur ? <Icon name="check" size={14} color="var(--acc)" sw={2.2} /> : <Icon name="folder" size={14} color="var(--icon)" />}</span>
+              <span class="b">
+                <span class="nm">{r.name}</span>
+                <span class="sub">
+                  {when(r.analyzedAt)} · 파일 {fmtNum(r.analyzedFiles)}개{r.root ? <span class="path"> · {shortRoot(r.root)}</span> : ' · 결과 파일'}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div class="proj-foot">
+        <button type="button" class="btn sm" onClick={props.onOpenFolder} disabled={props.running}>
+          <Icon name="folder_plus" size={14} />
+          다른 폴더 열기
+        </button>
+      </div>
+    </div>
   );
 }
 

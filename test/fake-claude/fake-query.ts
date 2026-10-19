@@ -36,6 +36,8 @@ export interface TurnApi {
   hook(tool: string, input: Record<string, unknown>, toolUseId?: string): Promise<Record<string, any>>;
   canUseTool(tool: string, input: Record<string, unknown>, toolUseId?: string): Promise<Record<string, any>>;
   db(): DbToolHandlers;
+  /** 지금 모델 (options.model → setModel로 바뀜, 없으면 claude-test) */
+  model(): string;
   interrupted(): boolean;
   waitInterrupt(ms?: number): Promise<boolean>;
 }
@@ -43,18 +45,20 @@ export interface TurnApi {
 export interface FakeCalls {
   options: Options[];
   setMode: string[];
+  setModel: (string | undefined)[];
   interrupts: number;
   closed: number;
   turns: string[];
 }
 
 export function fakeQuery(handler: (t: TurnApi) => Promise<void> | void): { queryFn: QueryFn; calls: FakeCalls } {
-  const calls: FakeCalls = { options: [], setMode: [], interrupts: 0, closed: 0, turns: [] };
+  const calls: FakeCalls = { options: [], setMode: [], setModel: [], interrupts: 0, closed: 0, turns: [] };
   let turnNo = 0;
   const queryFn: QueryFn = ({ prompt, options = {} }) => {
     calls.options.push(options);
     const out = new Chan<SDKMessage>();
     let interrupted = false;
+    let model = options.model || 'claude-test';
     let wake: (() => void) | null = null;
     const ac = new AbortController();
     void (async () => {
@@ -83,6 +87,7 @@ export function fakeQuery(handler: (t: TurnApi) => Promise<void> | void): { quer
               const s = options.mcpServers?.projdb as unknown as { __handlers: DbToolHandlers };
               return s.__handlers;
             },
+            model: () => model,
             interrupted: () => interrupted,
             waitInterrupt(ms = 5000) {
               if (interrupted) return Promise.resolve(true);
@@ -128,6 +133,13 @@ export function fakeQuery(handler: (t: TurnApi) => Promise<void> | void): { quer
       async setPermissionMode(m: string) {
         calls.setMode.push(m);
       },
+      async setModel(m?: string) {
+        calls.setModel.push(m);
+        model = m || 'claude-test';
+      },
+      async supportedModels() {
+        return FAKE_MODELS;
+      },
       close() {
         calls.closed++;
         ac.abort();
@@ -138,6 +150,13 @@ export function fakeQuery(handler: (t: TurnApi) => Promise<void> | void): { quer
   };
   return { queryFn, calls };
 }
+
+/** supportedModels() 결과 (실제 CLI initialize의 models 모양) */
+export const FAKE_MODELS = [
+  { value: 'default', resolvedModel: 'claude-test', displayName: 'Default (recommended)', description: '시험용 기본 모델' },
+  { value: 'test-opus', displayName: 'Test Opus', description: '시험용 큰 모델' },
+  { value: 'test-haiku', displayName: 'Test Haiku', description: '시험용 빠른 모델' },
+];
 
 // ------------------------------------------------------------------ 실제 CLI와 같은 모양의 메시지
 

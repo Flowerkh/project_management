@@ -9,6 +9,7 @@ import { errText } from '../bridge';
 import { useDesk } from '../ctx';
 import { msg } from '../messages';
 import { Avatar } from './items';
+import { invalidateModels, modelOptions, useModels } from './models';
 import { hm, nowIso, ymdhm } from './util';
 import './claude.css';
 
@@ -103,9 +104,13 @@ export function ClaudeDialog(props: { onClose: () => void }) {
   const [proxy, setProxy] = useState(app.claudeConfig?.proxy ?? '');
   const [shell, setShell] = useState<string[]>(app.claudeConfig?.shellAllow ?? []);
   const [aiSummary, setAiSummary] = useState(app.claudeConfig?.aiSummary ?? false);
+  const [model, setModel] = useState(app.claudeConfig?.model ?? '');
+  /** 목록에 없는 모델 이름을 직접 입력하는 중 */
+  const [customModel, setCustomModel] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [addErr, setAddErr] = useState<string | null>(null);
   const loaded = useRef(false);
+  const models = useModels(app);
 
   const initFrom = (c: ClaudeConfig) => {
     setAuthMode(c.authMode);
@@ -114,6 +119,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
     setProxy(c.proxy ?? '');
     setShell(c.shellAllow ?? []);
     setAiSummary(!!c.aiSummary);
+    setModel(c.model ?? '');
   };
 
   const recheck = async () => {
@@ -200,6 +206,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
       proxy: proxy.trim() || undefined,
       shellAllow: shell,
       aiSummary,
+      model: model.trim() || undefined,
       ...patch,
     };
     delete input.apiKey;
@@ -214,6 +221,8 @@ export function ClaudeDialog(props: { onClose: () => void }) {
     setErr(null);
     try {
       const next = await app.desk.invoke('claude.config.set', buildInput(patch));
+      // 인증·CLI가 바뀌면 쓸 수 있는 모델도 달라질 수 있다
+      if (next.authMode !== cfg.authMode || next.cliPath !== cfg.cliPath || JSON.stringify(next.cloud) !== JSON.stringify(cfg.cloud)) invalidateModels();
       setCfg(next);
       setApiKey('');
       setClearKey(false);
@@ -493,6 +502,63 @@ export function ClaudeDialog(props: { onClose: () => void }) {
                     onInput={(e) => setProxy((e.target as HTMLInputElement).value)}
                   />
                 </div>
+              </section>
+              <div class="cp-dlg-hsep" />
+
+              {/* 모델 */}
+              <section class="cp-sec" aria-label="모델">
+                <div class="cp-sec-h">
+                  <h4>모델</h4>
+                  <button type="button" class="btn cp-b28" onClick={() => void models.refresh()} disabled={models.loading} style={{ fontSize: '12.5px' }} title="PC의 Claude Code에서 모델 목록을 다시 받습니다">
+                    {models.loading ? <Spinner size={13} /> : <Icon name="refresh" size={14} color="var(--ink2)" />}
+                    목록 새로고침
+                  </button>
+                </div>
+                <div class="cp-field-row">
+                  <label for="cp-model">기본 모델</label>
+                  <select
+                    id="cp-model"
+                    class="inp"
+                    value={customModel ? '__custom__' : model}
+                    onChange={(e) => {
+                      const v = (e.target as HTMLSelectElement).value;
+                      if (v === '__custom__') setCustomModel(true);
+                      else {
+                        setCustomModel(false);
+                        setModel(v);
+                      }
+                    }}
+                  >
+                    {modelOptions(models.list, model, models.list?.defaultName ? `Claude Code 기본값 (${models.list.defaultName})` : 'Claude Code 기본값').map((o) => (
+                      <option key={o.value} value={o.value} title={o.title}>
+                        {o.label}
+                      </option>
+                    ))}
+                    <option value="__custom__">직접 입력…</option>
+                  </select>
+                </div>
+                {customModel && (
+                  <div class="cp-field-row">
+                    <label for="cp-model-custom">모델 이름</label>
+                    <input
+                      id="cp-model-custom"
+                      class="inp mono"
+                      placeholder="예: 회사 클라우드의 모델 ID"
+                      value={model}
+                      spellcheck={false}
+                      onInput={(e) => setModel((e.target as HTMLInputElement).value)}
+                    />
+                  </div>
+                )}
+                <span class="cp-lock-note" style={{ marginLeft: 0 }}>
+                  <span class="ic">
+                    <Icon name="info" size={12} color="var(--muted)" sw={1.9} />
+                  </span>
+                  <span>
+                    새 대화에 쓰는 모델입니다. 대화 중에는 입력창 아래에서 바꿀 수 있습니다. 목록은 이 PC의 Claude Code가 알려 준 모델입니다
+                    {models.list?.error ? ` · ${models.list.error}` : ''}
+                  </span>
+                </span>
               </section>
               <div class="cp-dlg-hsep" />
 

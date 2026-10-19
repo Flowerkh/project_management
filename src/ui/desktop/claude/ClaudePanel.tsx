@@ -1,7 +1,10 @@
 // SCR-09 Claude 대화 패널: 머리글(제목·연결 상태·대화 기록·내보내기·새 대화·닫기), 맥락 칩, 대화, 입력·모드.
 // 대화는 메인 프로세스(claude.*)가 실행하고 화면은 이벤트로 받은 항목을 그린다. 첫 질문을 보낼 때 대화를 시작한다(claude.start).
+import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ChatContext, ClaudeErrorCode, ConversationSummary } from '../../../shared/desktop-api';
+import { ConfirmDialog } from '../../components/Dialogs';
+import { ModalSizer } from '../../components/ModalSizer';
 import { Icon, Spinner } from '../../icons';
 import type { Target } from '../../model';
 import { errText } from '../bridge';
@@ -11,6 +14,7 @@ import { StatusDot } from './ClaudeButton';
 import { buildChatContext } from './context';
 import { Avatar, ChatLog, claudeErrActions, ErrorBox } from './items';
 import { type LinkEnv } from './markdown';
+import { modelName, modelOptions, useModels } from './models';
 import { useConversation } from './useConversation';
 import { type Chip, chipKey, composeWithContext, convTitle, effectiveChips, hm } from './util';
 import './claude.css';
@@ -82,6 +86,14 @@ export function ClaudePanel(props: { onClose: () => void }) {
   /** 첫 질문을 보내 대화를 시작하는 동안 먼저 보여 줄 질문 */
   const [startingText, setStartingText] = useState<string | null>(null);
   const [dismissedErr, setDismissedErr] = useState<string | null>(null);
+  /** 첫 질문을 보내기 전에 고른 모델 (undefined = Claude 연결의 기본 모델) */
+  const [draftModel, setDraftModel] = useState<string | undefined>(undefined);
+  /** 크게 보기 (패널을 가운데 큰 창으로) */
+  const [expanded, setExpanded] = useState(false);
+  /** 지우기 확인: 대화 하나 / 이 프로젝트 대화 모두 */
+  const [confirmDel, setConfirmDel] = useState<{ kind: 'one'; id: string; title: string; running: boolean } | { kind: 'all' } | null>(null);
+  /** 대화 기록 목록을 다시 읽게 */
+  const [histTick, setHistTick] = useState(0);
   const baseTarget = useRef<string>(targetKey(app.target));
   const bodyRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -114,6 +126,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
 
   const newDraft = (ctx?: ChatContext) => {
     cv.clear();
+    setDraftModel(undefined);
     setDraft(ctx ?? buildChatContext(app.model, app.target));
     resetChips();
     forceBottom.current = true;
@@ -133,7 +146,8 @@ export function ClaudePanel(props: { onClose: () => void }) {
   /** 첫 질문: 대화를 만들고(작업 사본 준비는 work.progress로 보임) 보낸다 */
   const sendNew = async (text: string, ctx: ChatContext | undefined) => {
     setStartingText(text);
-    const c = await cv.start(app.root, ctx && ctx.chips.length ? { context: ctx } : undefined);
+    const opts = { ...(ctx && ctx.chips.length ? { context: ctx } : {}), ...(draftModel !== undefined ? { model: draftModel } : {}) };
+    const c = await cv.start(app.root, Object.keys(opts).length ? opts : undefined);
     setStartingText(null);
     if (!c) return false;
     remember(c.id);
@@ -142,6 +156,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
   };
 
   const blocked = app.claude?.state === 'off' || app.claude?.state === 'missing';
+  const models = useModels(app, !blocked);
   const running = !!conv?.running;
   const busy = cv.starting || cv.loading;
 
@@ -218,6 +233,47 @@ export function ClaudePanel(props: { onClose: () => void }) {
   useEffect(() => {
     if (app.chat) handle(app.chat);
   }, [app.chat?.nonce]);
+
+  // 다른 프로젝트로 바뀌면 그 프로젝트의 대화로 (그 프로젝트에서 마지막으로 연 대화 → 오늘 대화 → 새 대화)
+  const shownRoot = useRef(rootKey);
+  useEffect(() => {
+    if (shownRoot.current === rootKey) return;
+    shownRoot.current = rootKey;
+    setInput('');
+    resizeTa('');
+    void handle({ nonce: Date.now() });
+  }, [rootKey]);
+
+  const deleteConv = async (id: string) => {
+    try {
+      await app.desk.invoke('claude.delete', id);
+      if (lastConvByRoot.get(rootKey) === id) lastConvByRoot.delete(rootKey);
+      if (conv?.id === id) {
+        setInput('');
+        resizeTa('');
+        newDraft();
+      }
+      setHistTick((n) => n + 1);
+      app.toast('대화를 지웠습니다.');
+    } catch (e) {
+      app.toast(`대화를 지우지 못했습니다. ${errText(e)}`);
+    }
+  };
+
+  const clearAll = async () => {
+    if (!app.root) return;
+    try {
+      const n = await app.desk.invoke('claude.clear', app.root);
+      lastConvByRoot.delete(rootKey);
+      setInput('');
+      resizeTa('');
+      newDraft();
+      setHistTick((k) => k + 1);
+      app.toast(n ? `이 프로젝트의 대화 ${n}개를 지웠습니다.` : '지울 대화가 없습니다.');
+    } catch (e) {
+      app.toast(`대화를 지우지 못했습니다. ${errText(e)}`);
+    }
+  };
 
   // 칩: 시작한 대화는 보낸 맥락 + 다음 질문과 함께 보낼 변경, 시작 전에는 초안
   const baseChips = conv ? effectiveChips(conv) : draft?.chips ?? [];
@@ -309,6 +365,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
     if ((e.target as HTMLElement | null)?.closest?.('.scrim, [aria-modal="true"]')) return;
     e.stopPropagation();
     if (histOpen) setHistOpen(false);
+    else if (expanded) setExpanded(false);
     else props.onClose();
   };
 
@@ -328,9 +385,20 @@ export function ClaudePanel(props: { onClose: () => void }) {
   const mode = conv?.mode ?? 'plan';
   const canEdit = !!app.root && (!conv || conv.root !== null);
   const title = conv ? convTitle(conv) : draft?.title ? `${draft.title} · 새 대화` : '새 대화';
+  const effModel = (conv ? conv.model : draftModel) ?? app.claudeConfig?.model ?? '';
+  const effInfo = effModel ? models.list?.models.find((m) => m.value === effModel) : null;
+  const modelTitle = [
+    `모델: ${modelName(models.list, effModel)}`,
+    effModel ? effInfo?.description : models.list?.defaultDescription,
+    conv?.activeModel ? `지금 쓰는 모델: ${conv.activeModel}` : '',
+    `바꾸면 ${running ? '다음 응답' : '다음 질문'}부터 적용됩니다`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return (
-    <aside class="chat-panel cp-panel" aria-label="Claude 대화" onKeyDown={onPanelKey}>
+    <>
+    <aside class={`chat-panel cp-panel${expanded ? ' expanded' : ''}`} aria-label="Claude 대화" onKeyDown={onPanelKey}>
       <div class="cp-head">
         <Avatar size={28} />
         <div class="cp-head-t">
@@ -347,6 +415,26 @@ export function ClaudePanel(props: { onClose: () => void }) {
           </span>
         </div>
         <div class="cp-head-btns">
+          <button
+            type="button"
+            class={`cp-ibtn${expanded ? ' on' : ''}`}
+            aria-label={expanded ? '옆에 붙여 보기' : '크게 보기'}
+            title={expanded ? '옆에 붙여 보기 (Esc)' : '크게 보기 (가운데 큰 창)'}
+            aria-pressed={expanded}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            <Icon name={expanded ? 'shrink' : 'expand'} size={16} color="var(--ink2)" />
+          </button>
+          <button
+            type="button"
+            class="cp-ibtn"
+            aria-label="이 대화 지우기"
+            title="이 대화 지우기"
+            disabled={!conv}
+            onClick={() => conv && setConfirmDel({ kind: 'one', id: conv.id, title: convTitle(conv), running: conv.running })}
+          >
+            <Icon name="trash" size={16} color="var(--ink2)" />
+          </button>
           <button ref={histBtn} type="button" class={`cp-ibtn${histOpen ? ' on' : ''}`} aria-label="대화 기록" title="대화 기록" aria-expanded={histOpen} onClick={() => setHistOpen((v) => !v)}>
             <Icon name="clock" size={17} color="var(--ink2)" />
           </button>
@@ -376,6 +464,9 @@ export function ClaudePanel(props: { onClose: () => void }) {
             app={app}
             currentId={conv?.id}
             anchor={histBtn}
+            tick={histTick}
+            onDelete={(c) => setConfirmDel({ kind: 'one', id: c.id, title: c.title || '제목 없는 대화', running: c.id === conv?.id && !!conv?.running })}
+            onClearAll={() => setConfirmDel({ kind: 'all' })}
             onClose={() => setHistOpen(false)}
             onPick={(id) => {
               setHistOpen(false);
@@ -543,6 +634,24 @@ export function ClaudePanel(props: { onClose: () => void }) {
               </button>
             </div>
             <span class="hint">{mode === 'edit' ? '작업 사본만 수정' : '읽기·수정안만'}</span>
+            <select
+              class="cp-model"
+              aria-label="모델"
+              value={effModel}
+              disabled={blocked}
+              title={modelTitle}
+              onChange={(e) => {
+                const v = (e.target as HTMLSelectElement).value;
+                if (conv) void cv.setModel(v);
+                else setDraftModel(v);
+              }}
+            >
+              {modelOptions(models.list, effModel, '기본 모델').map((o) => (
+                <option key={o.value} value={o.value} title={o.title}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
             <span class="grow" />
             <span class="cnt" title={chips.map((c) => c.label).join(', ')}>
               맥락 {chips.length}개
@@ -564,7 +673,31 @@ export function ClaudePanel(props: { onClose: () => void }) {
           <span>질문·붙인 분석 결과·읽은 소스 일부·조회 결과(개인정보 가림)가 Claude로 전송됨 · 접속 정보는 읽지 않음</span>
         </div>
       </div>
+      {expanded && <ModalSizer id="chat-popup" center minWidth={560} />}
     </aside>
+    {expanded && <div class="cp-backdrop" onMouseDown={() => setExpanded(false)} />}
+    {confirmDel &&
+      createPortal(
+        <ConfirmDialog
+          title={confirmDel.kind === 'all' ? '이 프로젝트 대화 모두 지우기' : '대화 지우기'}
+          message={
+            confirmDel.kind === 'all'
+              ? `${app.projectName || '이 프로젝트'}의 Claude 대화를 모두 지울까요? 되돌릴 수 없습니다. 작업 사본과 작업 이력은 그대로 남습니다.`
+              : `「${confirmDel.title}」 대화를 지울까요? 되돌릴 수 없습니다.${confirmDel.running ? ' 응답 중인 대화는 멈춥니다.' : ''} 작업 사본과 작업 이력은 그대로 남습니다.`
+          }
+          ok="지우기"
+          danger
+          onClose={() => setConfirmDel(null)}
+          onOk={() => {
+            const c = confirmDel;
+            setConfirmDel(null);
+            if (c.kind === 'all') void clearAll();
+            else void deleteConv(c.id);
+          }}
+        />,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -615,7 +748,16 @@ function StatusBanner(props: { app: DeskApp }) {
   );
 }
 
-function HistoryPop(props: { app: DeskApp; currentId?: string; anchor: { current: HTMLButtonElement | null }; onPick: (id: string) => void; onClose: () => void }) {
+function HistoryPop(props: {
+  app: DeskApp;
+  currentId?: string;
+  anchor: { current: HTMLButtonElement | null };
+  tick: number;
+  onPick: (id: string) => void;
+  onDelete: (c: ConversationSummary) => void;
+  onClearAll: () => void;
+  onClose: () => void;
+}) {
   const { app } = props;
   const [list, setList] = useState<ConversationSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -629,11 +771,12 @@ function HistoryPop(props: { app: DeskApp; currentId?: string; anchor: { current
       (l) => setList([...l].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))),
       (e) => setErr(errText(e)),
     );
-  }, []);
+  }, [props.tick]);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (box.current?.contains(t) || props.anchor.current?.contains(t)) return;
+      // 지우기 확인 창을 누르는 동안은 닫지 않는다
+      if (box.current?.contains(t) || props.anchor.current?.contains(t) || (t as Element).closest?.('.scrim')) return;
       props.onClose();
     };
     document.addEventListener('mousedown', onDown);
@@ -657,18 +800,39 @@ function HistoryPop(props: { app: DeskApp; currentId?: string; anchor: { current
         )}
         {list && !list.length && <div class="cp-pop-empty">{app.root ? '이 프로젝트의 대화가 아직 없습니다.' : '폴더로 연 프로젝트에서 대화를 저장합니다.'}</div>}
         {list?.map((c) => (
-          <button type="button" key={c.id} class={`cp-pop-item${c.id === props.currentId ? ' cur' : ''}`} onClick={() => props.onPick(c.id)}>
-            <span class="t">
-              <span title={c.title}>{c.title || '제목 없는 대화'}</span>
-              {c.kind === 'new' && <span class="tag acc">새 프로젝트</span>}
-              {c.mode === 'edit' && <span class="tag neutral">수정 허용</span>}
-            </span>
-            <span class="m">
-              {hm(c.updatedAt)} · 항목 {c.items}개
-            </span>
-          </button>
+          <div key={c.id} class={`cp-pop-row${c.id === props.currentId ? ' cur' : ''}`}>
+            <button type="button" class="cp-pop-item" onClick={() => props.onPick(c.id)}>
+              <span class="t">
+                <span title={c.title}>{c.title || '제목 없는 대화'}</span>
+                {c.kind === 'new' && <span class="tag acc">새 프로젝트</span>}
+                {c.mode === 'edit' && <span class="tag neutral">수정 허용</span>}
+              </span>
+              <span class="m">
+                {ymdOrHm(c.updatedAt)} · 항목 {c.items}개
+              </span>
+            </button>
+            <button type="button" class="cp-pop-del" aria-label={`${c.title || '제목 없는 대화'} 지우기`} title="이 대화 지우기" onClick={() => props.onDelete(c)}>
+              <Icon name="trash" size={14} />
+            </button>
+          </div>
         ))}
       </div>
+      {!!list?.length && (
+        <div class="cp-pop-f">
+          <span class="cp-muted">이 프로젝트 대화 {list.length}개</span>
+          <button type="button" class="cp-linkbtn danger" onClick={props.onClearAll}>
+            모두 지우기
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/** 오늘이면 시각, 아니면 날짜와 시각 */
+function ymdOrHm(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return hm(iso);
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hm(iso)}`;
 }

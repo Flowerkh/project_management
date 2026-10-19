@@ -1,7 +1,7 @@
 {
   "name": "project-analyzer",
   "productName": "프로젝트 분석 시스템",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "프로젝트 폴더를 불러와 DB 테이블·메뉴·화면·배치 관계를 정리하는 분석 도구 (프로토타입)",
   "private": true,
   "type": "module",

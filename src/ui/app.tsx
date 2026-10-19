@@ -10,7 +10,7 @@ import type { FolderFile, LoadedFolder } from '../platform/types';
 import type { MenuRow } from '../shared/desktop-api';
 import { redactSecrets } from '../shared/secrets';
 import { ConfirmDialog, DEFAULT_SETTINGS, type Settings, SettingsModal } from './components/Dialogs';
-import { Header } from './components/Header';
+import { Header, type HeaderPopover } from './components/Header';
 import { ancestorsOf, Sidebar } from './components/Sidebar';
 import { SourceViewer, type ViewerReq } from './components/SourceViewer';
 import { NavCtx, type Nav } from './ctx';
@@ -64,7 +64,7 @@ export interface Initial {
   phase?: Phase;
   target?: Target;
   viewer?: ViewerReq;
-  popover?: 'lang' | 'db';
+  popover?: HeaderPopover;
   folder?: LoadedFolder;
   runState?: RunState;
   modal?: ModalKind;
@@ -87,7 +87,7 @@ export function App(props: { init?: Initial }) {
   const [viewer, setViewer] = useState<ViewerReq | null>(init.viewer ?? null);
   const [rs, setRs] = useState<RunState | null>(init.runState ?? null);
   const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...safeStorage<Partial<Settings>>('pa.settings', {}) }));
-  const [popover, setPopover] = useState<'lang' | 'db' | null>(init.popover ?? null);
+  const [popover, setPopover] = useState<HeaderPopover | null>(init.popover ?? null);
   const [modal, setModal] = useState<ModalKind>(init.modal ?? null);
   const [toast, setToast] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentItem[]>([]);
@@ -652,6 +652,10 @@ export function App(props: { init?: Initial }) {
         onSettings={() => setModal('settings')}
         extras={shell?.headerButtons}
         onProjectChip={phase === 'result' || phase === 'confirm' ? shell?.onProjectChip : undefined}
+        recent={recent}
+        currentRoot={folder?.root}
+        onOpenRecent={openRecent}
+        onProjectMenu={refreshRecent}
         onHome={() => {
           if (phase === 'running') return;
           if (phase === 'result') nav({ kind: 'summary' });

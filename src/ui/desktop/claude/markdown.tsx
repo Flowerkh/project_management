@@ -416,7 +416,7 @@ function renderBlocks(blocks: Block[], env: LinkEnv, key: string, caret: boolean
                 <tr>
                   {b.head.map((h, i) => (
                     <th key={i} style={b.align[i] ? { textAlign: b.align[i] } : undefined}>
-                      {renderInline(h, env, `${k}h${i}`)}
+                      <div class="c">{renderInline(h, env, `${k}h${i}`)}</div>
                     </th>
                   ))}
                 </tr>
@@ -426,7 +426,7 @@ function renderBlocks(blocks: Block[], env: LinkEnv, key: string, caret: boolean
                   <tr key={ri}>
                     {b.head.map((_, ci) => (
                       <td key={ci} style={b.align[ci] ? { textAlign: b.align[ci] } : undefined}>
-                        {renderInline(r[ci] ?? '', env, `${k}r${ri}c${ci}`)}
+                        <div class="c">{renderInline(r[ci] ?? '', env, `${k}r${ri}c${ci}`)}</div>
                       </td>
                     ))}
                   </tr>

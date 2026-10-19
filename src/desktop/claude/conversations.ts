@@ -113,6 +113,8 @@ export function publicConv(c: StoredConversation, live?: { running: boolean; pen
     items: c.items,
     running: live?.running ?? false,
   };
+  if (c.model !== undefined) out.model = c.model;
+  if (c.activeModel) out.activeModel = c.activeModel;
   if (c.sessionId) out.sessionId = c.sessionId;
   if (c.workId) out.workId = c.workId;
   if (c.context) out.context = c.context;

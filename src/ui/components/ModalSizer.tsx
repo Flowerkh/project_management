@@ -31,14 +31,15 @@ function store(id: string, s: Size | null): void {
   }
 }
 
-function apply(modal: HTMLElement, s: Size, top: number): void {
+/** top: 위가 고정된 창의 윗변 위치 (세로 가운데 정렬이면 null) */
+function apply(modal: HTMLElement, s: Size, top: number | null): void {
   if (s.w) {
     modal.style.width = `${s.w}px`;
     modal.style.maxWidth = `calc(100vw - ${GAP * 2}px)`;
   }
   if (s.h) {
     modal.style.height = `${s.h}px`;
-    modal.style.maxHeight = `calc(100vh - ${Math.round(top) + GAP}px)`;
+    modal.style.maxHeight = top === null ? `calc(100vh - ${GAP * 2}px)` : `calc(100vh - ${Math.round(top) + GAP}px)`;
   }
   modal.classList.toggle('rz-sized', !!(s.w || s.h));
 }
@@ -48,15 +49,22 @@ function reset(modal: HTMLElement): void {
   modal.classList.remove('rz-sized');
 }
 
-/** id: 크기를 기억할 이름 · minWidth: 이보다 좁게는 못 줄임 (기본 420, 처음 크기가 더 작으면 처음 크기) */
-export function ModalSizer(props: { id: string; minWidth?: number }) {
+/**
+ * id: 크기를 기억할 이름 · minWidth: 이보다 좁게는 못 줄임 (기본 420, 처음 크기가 더 작으면 처음 크기)
+ * center: 창이 가로·세로 모두 가운데 정렬 (부모가 가운데로 놓지 않고 창 스스로 margin:auto로 가운데에 있을 때)
+ */
+export function ModalSizer(props: { id: string; minWidth?: number; center?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const modal = () => ref.current?.parentElement ?? null;
 
   useLayoutEffect(() => {
     const m = modal();
     const s = load(props.id);
-    if (m && s) apply(m, s, m.getBoundingClientRect().top);
+    if (m && s) apply(m, s, props.center ? null : m.getBoundingClientRect().top);
+    // 손잡이가 없어지면(크게 보기를 닫음 등) 직접 정한 크기를 뗀다
+    return () => {
+      if (m) reset(m);
+    };
   }, [props.id]);
 
   const start = (e: PointerEvent, ax: boolean, ay: boolean) => {
@@ -69,8 +77,8 @@ export function ModalSizer(props: { id: string; minWidth?: number }) {
     const vh = window.innerHeight;
     // 가운데 정렬된 쪽은 양쪽으로 늘어나므로 두 배로 바꿔야 끄는 가장자리가 마우스를 따라온다
     const ps = m.parentElement ? getComputedStyle(m.parentElement) : null;
-    const kx = ps?.justifyContent === 'center' ? 2 : 1;
-    const ky = ps?.alignItems === 'center' ? 2 : 1;
+    const kx = props.center || ps?.justifyContent === 'center' ? 2 : 1;
+    const ky = props.center || ps?.alignItems === 'center' ? 2 : 1;
     const minW = Math.min(r.width, props.minWidth ?? 420);
     const minH = Math.min(r.height, 220);
     const maxW = vw - GAP * 2;
@@ -85,7 +93,7 @@ export function ModalSizer(props: { id: string; minWidth?: number }) {
     const move = (ev: PointerEvent) => {
       if (ax) size.w = Math.round(Math.max(minW, Math.min(maxW, r.width + kx * (ev.clientX - x0))));
       if (ay) size.h = Math.round(Math.max(minH, Math.min(maxH, r.height + ky * (ev.clientY - y0))));
-      apply(m, size, r.top);
+      apply(m, size, ky === 2 ? null : r.top);
     };
     const end = () => {
       handle.removeEventListener('pointermove', move);

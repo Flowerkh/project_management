@@ -5,7 +5,7 @@
 //   &cstate=off|login|missing|offline  Claude 연결 상태 (상단 점·POP-03·패널 배너)
 //   &phase=new [&nstep=plan|gen|done] [&nfolder=dirty]   SCR-11 새 프로젝트
 import type {
-  ChatContext, ChatItem, ChatMode, ClaudeConfig, ClaudeConfigInput, ClaudeErrorCode, ClaudeStartOptions, ClaudeStatus, Conversation,
+  ChatContext, ChatItem, ChatMode, ClaudeConfig, ClaudeConfigInput, ClaudeErrorCode, ClaudeModelList, ClaudeStartOptions, ClaudeStatus, Conversation,
   ConversationSummary, PendingRequest, QueryCard,
 } from '../../../shared/desktop-api';
 import { makeMock } from '../../mock';
@@ -21,6 +21,13 @@ const NFOLDER = P.get('nfolder');
 
 const CLI = 'C:\\Users\\hong\\.local\\bin\\claude.exe';
 const VERSION = '2.1.301';
+/** 미리보기용 모델 목록 (실제 목록은 PC의 Claude Code가 알려 줌) */
+const MOCK_MODELS: { value: string; name: string; description: string; resolved?: string }[] = [
+  { value: 'default', name: 'Default (recommended)', description: 'Sonnet · 일상 작업에 알맞은 모델', resolved: 'claude-sonnet' },
+  { value: 'opus', name: 'Opus', description: '어려운 문제에 알맞은 큰 모델', resolved: 'claude-opus' },
+  { value: 'sonnet', name: 'Sonnet', description: '일상 작업에 알맞은 모델', resolved: 'claude-sonnet' },
+  { value: 'haiku', name: 'Haiku', description: '빠르고 가벼운 모델', resolved: 'claude-haiku' },
+];
 const NEW_FOLDER = 'D:\\work\\inquiry-admin';
 
 const IMPL = 'src/main/java/egovframework/egov/shop/order/service/impl/OrderServiceImpl.java';
@@ -304,7 +311,16 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
     kit.emit({ type: 'claude.item', conversationId: c.id, item: clone(item) });
   };
   const emitState = (c: Conversation) =>
-    kit.emit({ type: 'claude.state', conversationId: c.id, running: c.running, mode: c.mode, workId: c.workId, pending: c.pending ?? null });
+    kit.emit({
+      type: 'claude.state',
+      conversationId: c.id,
+      running: c.running,
+      mode: c.mode,
+      workId: c.workId,
+      pending: c.pending ?? null,
+      ...(c.model !== undefined ? { model: c.model } : {}),
+      ...(c.activeModel ? { activeModel: c.activeModel } : {}),
+    });
   const now = () => new Date().toISOString();
   const nid = (p: string) => `${p}${++seq}`;
 
@@ -608,6 +624,24 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
       else followUp(c, text, alive);
       return undefined;
     },
+    'claude.models': (): ClaudeModelList => ({
+      models: MOCK_MODELS.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, name: m.name, description: m.description, ...(m.resolved ? { resolved: m.resolved } : {}) })),
+      defaultName: 'Default (recommended)',
+      defaultDescription: 'Sonnet · 일상 작업에 알맞은 모델',
+      at: now(),
+    }),
+    'claude.setModel': (id: string, model: string) => {
+      const c = convs.get(id);
+      if (!c) return;
+      const before = c.model ?? cfg.model ?? '';
+      c.model = model;
+      if (before !== model) {
+        c.activeModel = MOCK_MODELS.find((m) => m.value === (model || 'default'))?.resolved ?? model;
+        const name = model ? (MOCK_MODELS.find((m) => m.value === model)?.name ?? model) : 'Claude Code 기본값';
+        emitItem(c, { id: nid('n'), type: 'notice', text: `모델을 ${name}(으)로 바꿨습니다${c.running ? ' · 다음 응답부터 적용됩니다' : ''}`, at: now() });
+      }
+      emitState(c);
+    },
     'claude.setMode': (id: string, mode: ChatMode) => {
       const c = convs.get(id);
       if (!c || c.mode === mode) return;
@@ -645,6 +679,15 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
     },
     'claude.delete': (id: string) => {
       convs.delete(id);
+    },
+    'claude.clear': (root: string) => {
+      let n = 0;
+      for (const [id, c] of convs) {
+        if (c.root !== root) continue;
+        convs.delete(id);
+        n++;
+      }
+      return n;
     },
     'claude.export': (id: string) => {
       const c = convs.get(id);

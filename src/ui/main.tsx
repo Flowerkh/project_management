@@ -55,7 +55,7 @@ function initialFromUrl(): Initial {
     init.viewer = { fileId, line: line ? Number(line) : undefined, query: query || undefined };
   }
   const pop = p.get('pop');
-  if (pop === 'lang' || pop === 'db') init.popover = pop;
+  if (pop === 'lang' || pop === 'db' || pop === 'proj') init.popover = pop;
   const phase = p.get('phase');
   if (phase === 'home') init.phase = 'home';
   if (phase === 'confirm') {
