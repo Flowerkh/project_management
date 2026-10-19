@@ -36,19 +36,20 @@ docs/          사용방법
 
 ## 실행 (Windows, 소스에서)
 
-Node.js 22 LTS를 설치한 뒤 저장소 폴더에서 (PowerShell 또는 cmd):
+Node.js 22 LTS를 설치한 뒤 PowerShell(또는 cmd)에서:
 
 ```
-npm install
-cd desktop
-npm install
-cd ..
-node scripts/build-desktop.mjs
+git clone https://github.com/Flowerkh/project_management.git
+cd project_management
+npm start
 ```
 
-- 바로 실행: `cd desktop` → `npx electron .`
-- 실행 파일(zip) 만들기: `cd desktop` → `npx electron-builder --win zip --x64 --publish never` → `release\ProjectAnalyzer-<버전>-win.zip` (압축을 풀고 `ProjectAnalyzer.exe`)
+- `npm start` 하나로 패키지 설치 → 빌드 → 실행까지 합니다. 설치는 처음이거나 패키지 목록(package-lock.json)이 바뀌었을 때만 하고, 처음에는 몇 분 걸립니다.
+- 저장소 폴더와 `desktop` 폴더 어디서 실행해도 됩니다. 새 코드를 받을 때는 `git pull` 뒤 `npm start`.
+- 실행 파일(zip) 만들기: `npm run package` → `release\ProjectAnalyzer-<버전>-win.zip` (몇 분 걸림. 압축을 풀고 `ProjectAnalyzer.exe`)
 - 브라우저용 HTML 한 파일: `node scripts/build.mjs` → `dist\web\project-analyzer.html` (Claude·형상관리·DB 기능은 데스크톱 앱에서만)
+- `node scripts\…` 명령은 저장소 폴더에서 실행합니다. `desktop` 폴더 안에서는 스크립트를 찾지 못합니다.
+- `git pull`이 package-lock.json의 로컬 변경 때문에 멈추면: `git restore package-lock.json desktop/package-lock.json` 뒤 다시 `git pull`
 
 사용법은 [docs/사용방법.txt](docs/사용방법.txt).
 
@@ -60,8 +61,9 @@ npm install
 
 npx tsc --noEmit -p .              # 타입 검사
 npx tsx --test test/*.test.ts      # 시험
+npm start                          # 설치 확인 → 빌드 → 데스크톱 앱 실행 (npm start -- --dev: 코드를 줄이지 않고 빌드)
+npm run package                    # release/ProjectAnalyzer-<버전>-win.zip (Windows x64, 설치 없이 압축 풀어 실행)
 node scripts/build.mjs             # dist/web/project-analyzer.html (오프라인 HTML 한 파일), dist/app
-sh scripts/build-desktop.sh        # release/ProjectAnalyzer-<버전>-win.zip (Windows x64, 설치 없이 압축 풀어 실행)
 npx tsx scripts/analyze.ts <폴더>  # 명령줄 분석 (결과 JSON)
 ```
 

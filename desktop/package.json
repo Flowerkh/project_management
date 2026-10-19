@@ -6,6 +6,10 @@
   "author": "project-analyzer",
   "private": true,
   "main": "main.mjs",
+  "scripts": {
+    "start": "node ../scripts/start-desktop.mjs",
+    "package": "node ../scripts/start-desktop.mjs --package"
+  },
   "build": {
     "appId": "local.project-analyzer",
     "productName": "ProjectAnalyzer",

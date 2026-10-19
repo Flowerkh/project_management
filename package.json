@@ -7,6 +7,8 @@
   "type": "module",
   "main": "dist/electron/main.cjs",
   "scripts": {
+    "start": "node scripts/start-desktop.mjs",
+    "package": "node scripts/start-desktop.mjs --package",
     "typecheck": "tsc --noEmit",
     "analyze": "tsx scripts/analyze.ts",
     "test": "tsx --test test/*.test.ts",

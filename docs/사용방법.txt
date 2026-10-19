@@ -21,13 +21,12 @@ v0.4부터 데스크톱 앱에서 Claude 연동, 형상관리(Git·SVN)·작업 
      실제로 업로드되지 않고, 이 브라우저 안에서만 읽습니다. [업로드]를 누르면 됩니다.
   * Claude 연동·형상관리·DB 연결은 데스크톱 앱에서만 됩니다.
 
-[소스에서 직접 빌드 (GitHub)]
-  Node.js 22 LTS 설치 후, 저장소 폴더에서:
-    npm install
-    cd desktop && npm install && cd ..
-    node scripts/build-desktop.mjs
-    cd desktop && npx electron .                                      ← 바로 실행
-    cd desktop && npx electron-builder --win zip --x64 --publish never  ← release\…-win.zip 만들기
+[소스에서 실행 (GitHub)]
+  Node.js 22 LTS를 설치한 뒤, 저장소 폴더(project_management)에서:
+    npm start          ← 패키지 설치(처음이거나 바뀌었을 때만, 처음엔 몇 분) → 빌드 → 실행
+    npm run package    ← 실행 파일 zip 만들기 (release\ProjectAnalyzer-…-win.zip, 몇 분 걸림)
+  * 새 코드를 받을 때: git pull 뒤 npm start
+  * desktop 폴더 안에서 npm start 를 해도 됩니다. node scripts\… 명령은 저장소 폴더에서 실행해야 합니다.
 
 
 2. 분석 사용 순서
