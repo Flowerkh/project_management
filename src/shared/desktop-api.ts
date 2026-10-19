@@ -371,8 +371,20 @@ export interface ClaudeModel {
   description?: string;
 }
 
+/** Claude Code가 알려 준 지금 쓰는 계정 (앱은 저장하지 않음) */
+export interface ClaudeAccount {
+  email?: string;
+  organization?: string;
+  /** 구독 종류 (pro·max·team·enterprise 등) */
+  subscription?: string;
+  /** firstParty(Anthropic) · bedrock · vertex · foundry … */
+  provider?: string;
+}
+
 export interface ClaudeModelList {
   models: ClaudeModel[];
+  /** 지금 Claude Code가 쓰는 계정 (다른 계정으로 바꿨는지 확인용) */
+  account?: ClaudeAccount;
   /** Claude Code 기본값의 이름·설명 (CLI 목록의 'default' 항목) */
   defaultName?: string;
   defaultDescription?: string;

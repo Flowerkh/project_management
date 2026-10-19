@@ -232,13 +232,13 @@ async function main() {
     await shot('summary');
   });
 
-  await step('Claude 연결(POP-03)', async () => {
+  await step('설정 > Claude 연결(POP-03)', async () => {
     await win.click('header button:has-text("Claude")');
-    await win.waitForSelector('[role="dialog"]:has-text("Claude 연결")', { timeout: 10000 });
-    await win.waitForSelector('button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
+    await win.waitForSelector('[role="dialog"][aria-label="설정"] #set-page-claude', { timeout: 10000 });
+    await win.waitForSelector('#set-page-claude button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
     await shot('pop03');
-    await win.click('button:has-text("연동 켜기")');
-    await win.waitForSelector('[role="dialog"]:has-text("Claude 연결")', { state: 'detached', timeout: 15000 });
+    await win.click('#set-page-claude button:has-text("연동 켜기")');
+    await win.waitForSelector('[role="dialog"][aria-label="설정"]', { state: 'detached', timeout: 15000 });
   });
 
   await step('DB 연결(POP-04)', async () => {

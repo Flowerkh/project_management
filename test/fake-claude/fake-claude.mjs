@@ -26,6 +26,8 @@
 //   PA_FAKE_DELAY        글자 스트리밍 간격 ms (기본 8)
 //   PA_FAKE_VERSION      --version 결과 (기본 2.1.302)
 //   PA_FAKE_MODELS       initialize의 모델 목록 JSON (기본: default→fake-sonnet, fake-opus, fake-haiku)
+//   PA_FAKE_ACCOUNT      initialize의 계정 JSON (기본: tester@example.com · Fake Org · max).
+//                        <상태 폴더>/account.json이 있으면 그것 (E2E: 터미널 /login으로 다른 계정에 로그인한 것처럼)
 //                        --model·set_model로 고른 모델이 system/init·assistant의 model로 나간다 (별칭은 resolvedModel로)
 //
 // 시나리오 형식
@@ -97,6 +99,14 @@ try {
 } catch {
   // 기본 목록
 }
+let ACCOUNT = { email: 'tester@example.com', organization: 'Fake Org', subscriptionType: 'max', tokenSource: 'claude.ai', apiProvider: 'firstParty' };
+try {
+  if (process.env.PA_FAKE_ACCOUNT) ACCOUNT = JSON.parse(process.env.PA_FAKE_ACCOUNT);
+  const f = path.join(process.env.PA_FAKE_STATE_DIR || path.join(os.tmpdir(), 'pa-fake-claude'), 'account.json');
+  if (fs.existsSync(f)) ACCOUNT = JSON.parse(fs.readFileSync(f, 'utf8'));
+} catch {
+  // 기본 계정
+}
 /** 고른 모델 (별칭이면 실제 이름으로) */
 let model = 'default';
 const resolveModel = (m) => {
@@ -145,7 +155,7 @@ function envSummary() {
   };
 }
 
-log({ ev: 'start', argv, cwd, env: envSummary() });
+log({ ev: 'start', argv, cwd, env: envSummary(), account: ACCOUNT?.email ?? null });
 
 // ------------------------------------------------------------------ 출력·제어 요청
 
@@ -307,7 +317,7 @@ function handleControl(msg) {
         output_style: 'default',
         available_output_styles: ['default'],
         models: MODELS,
-        account: {},
+        account: ACCOUNT,
         pid: process.pid,
         pending_permission_requests: [],
         pending_user_dialog_requests: [],

@@ -1,4 +1,5 @@
-// 모델 목록 (claude.models): PC의 Claude Code가 알려 준 쓸 수 있는 모델. 메인 프로세스가 기억하고, 화면도 한 번 받은 것을 같이 쓴다.
+// 모델 목록 (claude.models): PC의 Claude Code가 알려 준 쓸 수 있는 모델과 지금 계정. 메인 프로세스가 기억하고,
+// 화면도 한 번 받은 것을 같이 쓴다. 어디서든 새로 받으면(설정의 [다시 확인] 등) 목록을 쓰는 곳이 모두 바뀐다. 저장은 하지 않는다.
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { ClaudeModelList } from '../../../shared/desktop-api';
 import { errText } from '../bridge';
@@ -6,6 +7,7 @@ import type { DeskApp } from '../ctx';
 
 let cache: ClaudeModelList | null = null;
 let inflight: Promise<ClaudeModelList> | null = null;
+const listeners = new Set<(l: ClaudeModelList) => void>();
 
 /** Claude 연결 설정이 바뀜 → 다음에 다시 받음 */
 export function invalidateModels(): void {
@@ -16,6 +18,13 @@ export function useModels(app: DeskApp, enabled = true): { list: ClaudeModelList
   const [list, setList] = useState<ClaudeModelList | null>(cache);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    listeners.add(setList);
+    return () => {
+      listeners.delete(setList);
+    };
+  }, []);
+
   const load = useCallback(
     async (refresh: boolean) => {
       if (!refresh && cache) {
@@ -23,16 +32,19 @@ export function useModels(app: DeskApp, enabled = true): { list: ClaudeModelList
         return;
       }
       setLoading(true);
+      const p = !refresh && inflight ? inflight : app.desk.invoke('claude.models', refresh);
+      inflight = p;
       try {
-        const p = !refresh && inflight ? inflight : app.desk.invoke('claude.models', refresh);
-        inflight = p;
         const r = await p;
-        if (!r.error) cache = r;
+        if (!r.error) {
+          cache = r;
+          for (const f of listeners) f(r);
+        }
         setList(r);
       } catch (e) {
         setList({ models: [], error: errText(e), at: new Date().toISOString() });
       } finally {
-        inflight = null;
+        if (inflight === p) inflight = null;
         setLoading(false);
       }
     },

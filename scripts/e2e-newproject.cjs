@@ -133,11 +133,11 @@ async function main() {
     await win.waitForSelector('button:has-text("새 프로젝트")', { timeout: 15000 });
     await shot('home');
     await win.click('button:has-text("새 프로젝트")');
-    // 연동이 꺼져 있으면 Claude 연결(POP-03)부터
-    await win.waitForSelector('[role="dialog"]:has-text("Claude 연결")', { timeout: 10000 });
-    await win.waitForSelector('button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
-    await win.click('button:has-text("연동 켜기")');
-    await win.waitForSelector('[role="dialog"]:has-text("Claude 연결")', { state: 'detached', timeout: 15000 });
+    // 연동이 꺼져 있으면 설정 > Claude 연결(POP-03)부터
+    await win.waitForSelector('[role="dialog"][aria-label="설정"] #set-page-claude', { timeout: 10000 });
+    await win.waitForSelector('#set-page-claude button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
+    await win.click('#set-page-claude button:has-text("연동 켜기")');
+    await win.waitForSelector('[role="dialog"][aria-label="설정"]', { state: 'detached', timeout: 15000 });
     await win.click('button:has-text("새 프로젝트")');
     await win.waitForSelector('[aria-label="진행 단계"]', { timeout: 10000 });
     await win.click('[aria-label="프로젝트 정보"] button:has-text("폴더 선택")');

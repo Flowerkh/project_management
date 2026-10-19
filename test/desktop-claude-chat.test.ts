@@ -12,7 +12,7 @@ import { claudeModule, register } from '../src/desktop/claude/index';
 import { setHost, testHost } from '../src/desktop/host';
 import { addEventSink, call } from '../src/desktop/ipc';
 import { services } from '../src/desktop/services';
-import { assistant, fakeQuery, init, result, SESSION, stream, textMessage, toolResult, toolUse, type TurnApi } from './fake-claude/fake-query';
+import { assistant, FAKE_ACCOUNT, fakeQuery, init, result, SESSION, stream, textMessage, toolResult, toolUse, type TurnApi } from './fake-claude/fake-query';
 import { fakeDb, fakeWork } from './fake-claude/services';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -542,6 +542,8 @@ test('모델: 목록(Claude Code initialize), 대화별 모델·기본 모델, �
   assert.equal(list.defaultName, 'Default (recommended)');
   assert.deepEqual(list.models.map((m) => m.value), ['test-opus', 'test-haiku']);
   assert.equal(list.models[0].name, 'Test Opus');
+  // 같은 initialize 응답의 계정: 보여 줄 것만 (토큰 출처는 빼고)
+  assert.deepEqual(list.account, { email: 'tester@example.com', organization: 'Test Org', subscription: 'max', provider: 'firstParty' });
   const opened = fq.calls.options.length;
   assert.deepEqual(await call('claude.models'), list, '두 번째는 기억한 목록');
   assert.equal(fq.calls.options.length, opened, '다시 띄우지 않음');
@@ -595,6 +597,53 @@ test('모델: 목록(Claude Code initialize), 대화별 모델·기본 모델, �
   await assert.rejects(call('claude.setModel', c2.id, 'bad model;rm'), (e: Error & { code?: string }) => e.code === 'invalid');
   await assert.rejects(setConfig({ enabled: true, authMode: 'login', shellAllow: [], aiSummary: false, model: 'a b' }), /모델 이름/);
   await setConfig({ enabled: true, authMode: 'login', shellAllow: ['mvn -q compile'], aiSummary: false });
+});
+
+test('계정 바꾸기: [다시 확인]은 쉬는 Claude 프로세스를 닫고 다음 메시지에 새 로그인으로 이어 감 · 응답 중이면 끝난 뒤 · 목록에 새 계정', async () => {
+  handler = (t) => {
+    t.emit(init());
+    t.emit(result());
+  };
+  const a = await call('claude.start', project, {});
+  await call('claude.send', a.id, '하나');
+  await idle(a.id);
+  // 터미널에서 다른 계정으로 로그인(/login) → [다시 확인]
+  FAKE_ACCOUNT.email = 'other@example.com';
+  try {
+    await call('claude.status', true);
+    const n = fq.calls.options.length;
+    await call('claude.send', a.id, '둘');
+    await idle(a.id);
+    assert.equal(fq.calls.options.length, n + 1, '새로 엶');
+    assert.equal(fq.calls.options.at(-1)!.resume, SESSION, '대화는 이어 감');
+    assert.equal((await call('claude.models', true)).account?.email, 'other@example.com');
+
+    // 응답 중에 바뀜 → 그 응답은 끝까지, 다음 메시지 때 새로 연다
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    handler = async (t) => {
+      t.emit(init());
+      await gate;
+      t.emit(result());
+    };
+    const m0 = fq.calls.options.length;
+    await call('claude.send', a.id, '셋');
+    await waitFor(() => claudeModule().manager._session(a.id)?.running, 2000, 'running');
+    claudeModule().manager.closeIdle();
+    release();
+    await idle(a.id);
+    assert.equal(fq.calls.options.length, m0, '응답 중에는 닫지 않음');
+    handler = (t) => {
+      t.emit(init());
+      t.emit(result());
+    };
+    await call('claude.send', a.id, '넷');
+    await idle(a.id);
+    assert.equal(fq.calls.options.length, m0 + 1, '다음 메시지에 새로 엶');
+    assert.ok(items(a.id).filter((i) => i.type === 'user').length === 4);
+  } finally {
+    FAKE_ACCOUNT.email = 'tester@example.com';
+  }
 });
 
 test('프로젝트 대화 모두 지우기 (claude.clear)', async () => {

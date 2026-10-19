@@ -120,7 +120,7 @@ export function Header(props: {
         </div>
       )}
       <span class="hdr-sep" />
-      <div ref={wrap} class="row" style={{ gap: '4px' }}>
+      <div ref={wrap} class="row hdr-infos" style={{ gap: '4px' }}>
         <div style={{ position: 'relative' }}>
           <button
             type="button"
@@ -166,9 +166,9 @@ export function Header(props: {
         </div>
       </div>
       <div class="hdr-right">
-        <button type="button" class="btn" onClick={props.onOpenFolder} disabled={props.running}>
+        <button type="button" class="btn" onClick={props.onOpenFolder} disabled={props.running} aria-label="폴더 열기" title="폴더 열기">
           <Icon name="folder_plus" size={16} />
-          폴더 열기
+          <span class="btn-t">폴더 열기</span>
         </button>
         {props.running ? (
           <button type="button" class="btn danger" onClick={props.onStop}>
@@ -182,9 +182,9 @@ export function Header(props: {
           </button>
         )}
         {props.extras}
-        <button type="button" class="btn" onClick={props.onSettings} disabled={props.running}>
+        <button type="button" class="btn" onClick={props.onSettings} disabled={props.running} aria-label="설정" title="설정 (분석 · Claude 연결)">
           <Icon name="gear" size={16} />
-          설정
+          <span class="btn-t">설정</span>
         </button>
       </div>
     </header>

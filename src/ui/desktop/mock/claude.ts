@@ -628,6 +628,8 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
       models: MOCK_MODELS.filter((m) => m.value !== 'default').map((m) => ({ value: m.value, name: m.name, description: m.description, ...(m.resolved ? { resolved: m.resolved } : {}) })),
       defaultName: 'Default (recommended)',
       defaultDescription: 'Sonnet · 일상 작업에 알맞은 모델',
+      // 미리보기용 가상 계정 (실제 계정 아님)
+      ...(CSTATE === 'missing' ? {} : { account: { email: 'dev.kim@example.com', organization: '예시 회사', subscription: 'max', provider: 'firstParty' } }),
       at: now(),
     }),
     'claude.setModel': (id: string, model: string) => {

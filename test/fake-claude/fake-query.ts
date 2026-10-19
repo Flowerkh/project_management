@@ -140,6 +140,9 @@ export function fakeQuery(handler: (t: TurnApi) => Promise<void> | void): { quer
       async supportedModels() {
         return FAKE_MODELS;
       },
+      async accountInfo() {
+        return { ...FAKE_ACCOUNT };
+      },
       close() {
         calls.closed++;
         ac.abort();
@@ -150,6 +153,9 @@ export function fakeQuery(handler: (t: TurnApi) => Promise<void> | void): { quer
   };
   return { queryFn, calls };
 }
+
+/** accountInfo() 결과 (실제 CLI initialize의 account 모양). 시험에서 바꿔 다른 계정 로그인을 흉내 낸다 */
+export const FAKE_ACCOUNT: Record<string, string> = { email: 'tester@example.com', organization: 'Test Org', subscriptionType: 'max', tokenSource: 'claude.ai', apiProvider: 'firstParty' };
 
 /** supportedModels() 결과 (실제 CLI initialize의 models 모양) */
 export const FAKE_MODELS = [

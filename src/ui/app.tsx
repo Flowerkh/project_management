@@ -9,7 +9,7 @@ import { getPlatform } from '../platform/index';
 import type { FolderFile, LoadedFolder } from '../platform/types';
 import type { MenuRow } from '../shared/desktop-api';
 import { redactSecrets } from '../shared/secrets';
-import { ConfirmDialog, DEFAULT_SETTINGS, type Settings, SettingsModal } from './components/Dialogs';
+import { ConfirmDialog, DEFAULT_SETTINGS, type Settings, SettingsModal, type SettingsPageId } from './components/Dialogs';
 import { Header, type HeaderPopover } from './components/Header';
 import { ancestorsOf, Sidebar } from './components/Sidebar';
 import { SourceViewer, type ViewerReq } from './components/SourceViewer';
@@ -88,7 +88,13 @@ export function App(props: { init?: Initial }) {
   const [rs, setRs] = useState<RunState | null>(init.runState ?? null);
   const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...safeStorage<Partial<Settings>>('pa.settings', {}) }));
   const [popover, setPopover] = useState<HeaderPopover | null>(init.popover ?? null);
-  const [modal, setModal] = useState<ModalKind>(init.modal ?? null);
+  const [modal, setModal] = useState<ModalKind>(init.modal ?? (init.deskModal === 'claude' ? 'settings' : null));
+  /** 설정 창에서 처음 보일 페이지 (Claude 연결은 데스크톱만) */
+  const [settingsPage, setSettingsPage] = useState<SettingsPageId>(init.deskModal === 'claude' ? 'claude' : 'analysis');
+  const openSettings = useCallback((page: SettingsPageId) => {
+    setSettingsPage(page);
+    setModal('settings');
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -578,7 +584,8 @@ export function App(props: { init?: Initial }) {
     openFile,
     toast: showToast,
     reanalyze,
-    initialModal: init.deskModal,
+    openSettings,
+    initialModal: init.deskModal === 'project' ? 'project' : undefined,
     initialChat: init.chat,
   });
 
@@ -649,7 +656,7 @@ export function App(props: { init?: Initial }) {
         onOpenFolder={pickFolder}
         onRun={onRun}
         onStop={() => setModal('stop')}
-        onSettings={() => setModal('settings')}
+        onSettings={() => openSettings('analysis')}
         extras={shell?.headerButtons}
         onProjectChip={phase === 'result' || phase === 'confirm' ? shell?.onProjectChip : undefined}
         recent={recent}
@@ -772,12 +779,14 @@ export function App(props: { init?: Initial }) {
         <SettingsModal
           value={settings}
           hasResult={!!result}
+          page={settingsPage}
+          pages={shell?.settingsPages}
           onClose={() => setModal(null)}
-          onSave={(s) => {
+          onSave={(s, toast) => {
             setSettings(s);
             saveStorage('pa.settings', s);
             setModal(null);
-            showToast('설정을 저장했습니다.');
+            showToast(toast ?? '설정을 저장했습니다.');
           }}
         />
       )}

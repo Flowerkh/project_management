@@ -44,7 +44,11 @@ export function register(opts: ClaudeModuleOptions = {}): void {
     setMode: (id, mode) => manager.setMode(id, mode),
   };
 
-  handle('claude.status', (recheck) => status.get(!!recheck));
+  handle('claude.status', (recheck) => {
+    // [다시 확인]: 터미널에서 다른 계정으로 로그인했을 수 있으니 쉬고 있는 Claude 프로세스는 닫는다 (다음 메시지에 새 로그인으로 다시 엶)
+    if (recheck) manager.closeIdle();
+    return status.get(!!recheck);
+  });
   handle('claude.config.get', () => getConfig());
   handle('claude.config.set', async (input: ClaudeConfigInput) => {
     const r = await setConfig(input);

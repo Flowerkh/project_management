@@ -71,6 +71,32 @@ function examplesFor(ctx: ChatContext | undefined): string[] {
   return ['이 시스템의 주요 업무 흐름을 설명해 주세요.', '오래되어 손볼 곳이 많은 부분을 찾아 주세요.'];
 }
 
+/** 옆에 붙은 대화창 너비 (이 PC에 기억) */
+const WIDTH_KEY = 'pa.chatWidth';
+const MIN_W = 380;
+/** 대화창을 넓혀도 분석 결과 쪽에 남길 너비 */
+const KEEP_MAIN = 420;
+
+function loadWidth(): number | null {
+  try {
+    const v = Number(localStorage.getItem(WIDTH_KEY));
+    return Number.isFinite(v) && v >= MIN_W ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeWidth(w: number | null): void {
+  try {
+    if (w) localStorage.setItem(WIDTH_KEY, String(Math.round(w)));
+    else localStorage.removeItem(WIDTH_KEY);
+  } catch {
+    // 저장소를 못 쓰면 이번에만
+  }
+}
+
+const clampWidth = (w: number) => Math.round(Math.max(MIN_W, Math.min(window.innerWidth - KEEP_MAIN, w)));
+
 export function ClaudePanel(props: { onClose: () => void }) {
   const app = useDesk();
   const cv = useConversation(app);
@@ -90,6 +116,9 @@ export function ClaudePanel(props: { onClose: () => void }) {
   const [draftModel, setDraftModel] = useState<string | undefined>(undefined);
   /** 크게 보기 (패널을 가운데 큰 창으로) */
   const [expanded, setExpanded] = useState(false);
+  /** 옆에 붙었을 때 너비 (null = 기본: 창 너비의 40%) */
+  const [width, setWidth] = useState<number | null>(loadWidth);
+  const panelRef = useRef<HTMLElement>(null);
   /** 지우기 확인: 대화 하나 / 이 프로젝트 대화 모두 */
   const [confirmDel, setConfirmDel] = useState<{ kind: 'one'; id: string; title: string; running: boolean } | { kind: 'all' } | null>(null);
   /** 대화 기록 목록을 다시 읽게 */
@@ -361,12 +390,67 @@ export function ClaudePanel(props: { onClose: () => void }) {
 
   const onPanelKey = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || e.isComposing) return;
-    // 패널 안에서 연 확인 창(쿼리 실행 등)은 그 창이 Esc를 받는다
-    if ((e.target as HTMLElement | null)?.closest?.('.scrim, [aria-modal="true"]')) return;
+    // 열린 창(쿼리 실행 확인·설정 등)이 있으면 그 창이 Esc를 받는다
+    if ((e.target as HTMLElement | null)?.closest?.('.scrim, [aria-modal="true"]') || document.querySelector('.scrim')) return;
     e.stopPropagation();
     if (histOpen) setHistOpen(false);
     else if (expanded) setExpanded(false);
     else props.onClose();
+  };
+
+  // 크게 보기는 창처럼: 초점이 패널 밖(확인 창을 닫은 뒤 등)이어도 Esc로 옆에 붙인다. 열린 창이 있으면 그 창이 먼저
+  useEffect(() => {
+    if (!expanded) return;
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.isComposing || document.querySelector('.scrim')) return;
+      setExpanded(false);
+    };
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  }, [expanded]);
+
+  // 왼쪽 가장자리를 끌어 너비 조절 (끄는 동안은 CSS 변수만 바꾸고, 놓을 때 기억)
+  const startResize = (e: PointerEvent) => {
+    const el = panelRef.current;
+    if (!el || e.button !== 0) return;
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add('rz-drag-x');
+    let w = r.width;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      moved = true;
+      w = clampWidth(r.right - ev.clientX);
+      el.style.setProperty('--cp-w', `${w}px`);
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      document.body.classList.remove('rz-drag-x');
+      // 누르기만 했으면 그대로 (기본 너비는 창 크기를 따라가게 둔다)
+      if (!moved) return;
+      setWidth(w);
+      storeWidth(w);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  };
+  const resetWidth = () => {
+    panelRef.current?.style.removeProperty('--cp-w');
+    setWidth(null);
+    storeWidth(null);
+  };
+  const onResizeKey = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const cur = panelRef.current?.getBoundingClientRect().width ?? width ?? 560;
+    const w = clampWidth(cur + (e.key === 'ArrowLeft' ? 32 : -32));
+    setWidth(w);
+    storeWidth(w);
   };
 
   const exportConv = async () => {
@@ -398,7 +482,28 @@ export function ClaudePanel(props: { onClose: () => void }) {
 
   return (
     <>
-    <aside class={`chat-panel cp-panel${expanded ? ' expanded' : ''}`} aria-label="Claude 대화" onKeyDown={onPanelKey}>
+    <aside
+      ref={panelRef}
+      class={`chat-panel cp-panel${expanded ? ' expanded' : ''}`}
+      aria-label="Claude 대화"
+      onKeyDown={onPanelKey}
+      style={!expanded && width ? { '--cp-w': `${width}px` } : undefined}
+    >
+      {!expanded && (
+        <div
+          class="cp-rz"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="대화창 너비"
+          aria-valuemin={MIN_W}
+          aria-valuenow={width ?? undefined}
+          tabIndex={0}
+          title="끌어서 너비 조절 · 두 번 누르면 원래 너비"
+          onPointerDown={startResize}
+          onDblClick={resetWidth}
+          onKeyDown={onResizeKey}
+        />
+      )}
       <div class="cp-head">
         <Avatar size={28} />
         <div class="cp-head-t">
@@ -454,6 +559,18 @@ export function ClaudePanel(props: { onClose: () => void }) {
             }}
           >
             <Icon name="plus" size={17} color="var(--ink2)" />
+          </button>
+          <button
+            type="button"
+            class="cp-ibtn"
+            aria-label="Claude 연결 설정"
+            title="Claude 연결 설정 (계정 바꾸기·기본 모델·연동 끄기)"
+            onClick={() => {
+              setHistOpen(false);
+              app.openModal('claude');
+            }}
+          >
+            <Icon name="gear" size={17} color="var(--ink2)" />
           </button>
           <button type="button" class="cp-ibtn" aria-label="닫기" title="닫기 (Esc)" onClick={props.onClose}>
             <Icon name="close" size={18} color="var(--ink2)" />
@@ -673,7 +790,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
           <span>질문·붙인 분석 결과·읽은 소스 일부·조회 결과(개인정보 가림)가 Claude로 전송됨 · 접속 정보는 읽지 않음</span>
         </div>
       </div>
-      {expanded && <ModalSizer id="chat-popup" center minWidth={560} />}
+      {expanded && <ModalSizer id="chat-popup" center minWidth={560} sides />}
     </aside>
     {expanded && <div class="cp-backdrop" onMouseDown={() => setExpanded(false)} />}
     {confirmDel &&
@@ -687,7 +804,10 @@ export function ClaudePanel(props: { onClose: () => void }) {
           }
           ok="지우기"
           danger
-          onClose={() => setConfirmDel(null)}
+          onClose={() => {
+            setConfirmDel(null);
+            focusInput();
+          }}
           onOk={() => {
             const c = confirmDel;
             setConfirmDel(null);

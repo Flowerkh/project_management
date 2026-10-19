@@ -1,13 +1,16 @@
-// POP-03 Claude 연결: 인증 방식 · 연결 확인(CLI·인터넷·인증) · 보내는 정보 · 기본 권한 · AI 요약 · 연동 켜기(MSG-14 동의).
-// 앱은 Claude 계정 정보·로그인 토큰을 읽거나 저장하지 않는다. 로그인은 [터미널에서 로그인]으로 연 Claude Code 화면에서 한다.
+// 설정 > Claude 연결 (POP-03): 연동 켜기·끄기(MSG-14 동의) · 인증 방식(지금 계정·계정 바꾸기) · 연결 확인(CLI·인터넷·인증) ·
+// 모델 · 보내는 정보 · 기본 권한 · AI 요약.
+// 앱은 로그인 토큰·비밀번호를 읽거나 저장하지 않는다. 로그인·계정 바꾸기는 [터미널에서 로그인]으로 연 Claude Code 화면(/login)에서 한다.
+// 계정 이름(이메일·조직·구독)은 Claude Code가 알려 준 것을 화면에만 보여 주고 저장하지 않는다.
 // API 키는 저장할 때만 보내고 화면에 다시 보여 주지 않는다(메인 프로세스가 Windows 사용자 계정 기준(DPAPI)으로 암호화해 보관).
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AuthMode, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../../shared/desktop-api';
-import { ModalSizer } from '../../components/ModalSizer';
+import type { AuthMode, ClaudeAccount, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../../shared/desktop-api';
+import type { SettingsPage, SettingsPageHandle } from '../../components/Dialogs';
 import { Icon, Spinner } from '../../icons';
 import { errText } from '../bridge';
-import { useDesk } from '../ctx';
+import { type DeskApp, useDesk } from '../ctx';
 import { msg } from '../messages';
+import { STATE_LABEL, StatusDot } from './ClaudeButton';
 import { Avatar } from './items';
 import { invalidateModels, modelOptions, useModels } from './models';
 import { hm, nowIso, ymdhm } from './util';
@@ -45,6 +48,39 @@ const BAD_CMD = /[;&|<>`]|\$\(/;
 function toInput(c: ClaudeConfig): ClaudeConfigInput {
   const { hasApiKey: _h, ...rest } = c;
   return rest;
+}
+
+/** 저장할 변경이 있는지 견줄 값 (키 순서·빈 값 차이는 무시) */
+function fingerprint(c: ClaudeConfigInput): string {
+  const cloud = c.authMode === 'cloud' && c.cloud ? { provider: c.cloud.provider, env: Object.fromEntries(Object.entries(c.cloud.env ?? {}).sort(([a], [b]) => a.localeCompare(b))) } : null;
+  return JSON.stringify([c.authMode, cloud, c.proxy || '', c.shellAllow ?? [], !!c.aiSummary, c.model || '']);
+}
+
+const PLAN: Record<string, string> = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise', free: 'Free' };
+
+/** 지금 계정 표시: 첫 줄(이메일) · 둘째 줄(조직 · 구독) */
+export function accountLines(a: ClaudeAccount | undefined): { main: string; sub: string } | null {
+  if (!a || (!a.email && !a.organization)) return null;
+  const plan = a.subscription ? `${PLAN[a.subscription.toLowerCase()] ?? a.subscription} 구독` : '';
+  return { main: a.email ?? a.organization!, sub: [a.email ? a.organization : '', plan].filter(Boolean).join(' · ') };
+}
+
+/** 설정 창 왼쪽 칸의 [Claude 연결] (데스크톱) */
+export function claudeSettingsPage(app: DeskApp): SettingsPage {
+  const on = !!app.claudeConfig?.enabled;
+  const st = app.claude?.state;
+  return {
+    id: 'claude',
+    label: 'Claude 연결',
+    icon: <Avatar size={20} />,
+    hint: (
+      <>
+        <StatusDot state={on ? st : 'off'} size={7} />
+        {on ? `켜짐 · ${st ? STATE_LABEL[st] : '확인 중'}` : '꺼짐'}
+      </>
+    ),
+    render: ({ handle, done }) => <ClaudeSettings handle={handle} onDone={done} />,
+  };
 }
 
 type CheckState = 'ok' | 'fail' | 'wait';
@@ -86,7 +122,7 @@ function Radio(props: { on: boolean; label: string; help: string; onPick: () => 
   );
 }
 
-export function ClaudeDialog(props: { onClose: () => void }) {
+export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | null }; onDone: (toast: string) => void }) {
   const app = useDesk();
   const [cfg, setCfg] = useState<ClaudeConfig | null>(app.claudeConfig);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -125,6 +161,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
   const recheck = async () => {
     setChecking(true);
     try {
+      // 메인 프로세스는 이때 쉬고 있는 Claude 프로세스를 닫는다 (터미널에서 바꾼 로그인을 다음 메시지부터 씀)
       const s = await app.desk.invoke('claude.status', true);
       setStatus(s);
       return s;
@@ -137,6 +174,12 @@ export function ClaudeDialog(props: { onClose: () => void }) {
     }
   };
 
+  /** [다시 확인]: 연결 확인 + 모델 목록·지금 계정 다시 받기 */
+  const recheckAll = () => {
+    void models.refresh();
+    return recheck();
+  };
+
   useEffect(() => {
     app.desk.invoke('claude.config.get').then(
       (c) => {
@@ -146,14 +189,9 @@ export function ClaudeDialog(props: { onClose: () => void }) {
       },
       (e) => setLoadErr(errText(e)),
     );
-    recheck();
+    // 열 때마다: 터미널에서 다른 계정으로 로그인했을 수 있다
+    void recheckAll();
   }, []);
-
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && !e.isComposing && props.onClose();
-    document.addEventListener('keydown', k);
-    return () => document.removeEventListener('keydown', k);
-  }, [props.onClose]);
 
   const st = status?.state;
   // 항목별 결과(checks)가 오면 그것을, 없으면 상태(state)로 짐작
@@ -215,48 +253,58 @@ export function ClaudeDialog(props: { onClose: () => void }) {
     return input;
   };
 
-  const save = async (patch: Partial<ClaudeConfigInput>, done: (s: ClaudeStatus | null) => boolean) => {
-    if (!cfg) return;
+  /** 저장 → 켜져 있으면 연결 확인 결과, 꺼져 있으면 null, 못 함 false */
+  const commit = async (patch: Partial<ClaudeConfigInput>): Promise<ClaudeStatus | null | false> => {
+    if (!cfg) return false;
+    if (patch.enabled !== false && (!keyReady || !cloudReady)) {
+      setErr(!keyReady ? 'API 키를 넣어 주세요.' : '회사 클라우드 설정을 채워 주세요.');
+      return false;
+    }
     setSaving(true);
     setErr(null);
     try {
       const next = await app.desk.invoke('claude.config.set', buildInput(patch));
-      // 인증·CLI가 바뀌면 쓸 수 있는 모델도 달라질 수 있다
-      if (next.authMode !== cfg.authMode || next.cliPath !== cfg.cliPath || JSON.stringify(next.cloud) !== JSON.stringify(cfg.cloud)) invalidateModels();
+      // 인증·CLI가 바뀌면 쓸 수 있는 모델·계정도 달라질 수 있다
+      if (next.authMode !== cfg.authMode || next.cliPath !== cfg.cliPath || JSON.stringify(next.cloud) !== JSON.stringify(cfg.cloud) || !!apiKey.trim() || clearKey) invalidateModels();
       setCfg(next);
       setApiKey('');
       setClearKey(false);
-      const s = patch.enabled === false ? null : await recheck();
+      const s = next.enabled ? await recheck() : null;
       await app.refreshClaude(false);
-      if (done(s)) props.onClose();
+      return s;
     } catch (e) {
       setErr(`저장하지 못했습니다. ${errText(e)}`);
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const turnOn = () =>
-    save({ enabled: true, consentAt: nowIso() }, (s) => {
-      if (s && s.state !== 'on') {
-        setErr('연동을 켰지만 연결 확인에 실패했습니다. 위의 안내에 따라 해결한 뒤 [다시 확인]을 눌러 주세요.');
-        return false;
-      }
-      app.toast('Claude 연동을 켰습니다.');
-      return true;
-    });
+  const turnOn = async () => {
+    const s = await commit({ enabled: true, consentAt: nowIso() });
+    if (s === false) return;
+    if (!s || s.state !== 'on') {
+      setErr('연동을 켰지만 연결 확인에 실패했습니다. 아래 연결 확인의 안내에 따라 해결한 뒤 [다시 확인]을 눌러 주세요.');
+      return;
+    }
+    props.onDone('Claude 연동을 켰습니다.');
+  };
 
-  const saveOnly = () =>
-    save({}, () => {
-      app.toast('Claude 연결 설정을 저장했습니다.');
-      return true;
-    });
+  const turnOff = async () => {
+    if ((await commit({ enabled: false })) === false) return;
+    props.onDone('Claude 연동을 껐습니다. 분석 기능은 그대로 쓸 수 있습니다.');
+  };
 
-  const turnOff = () =>
-    save({ enabled: false }, () => {
-      app.toast('Claude 연동을 껐습니다. 분석 기능은 그대로 쓸 수 있습니다.');
-      return true;
-    });
+  // 설정 창의 [저장]: 바뀐 것이 있을 때만 저장
+  const dirty = !!cfg && (fingerprint(buildInput({})) !== fingerprint(toInput(cfg)) || !!apiKey.trim() || clearKey);
+  const live = useRef({ dirty, commit });
+  live.current = { dirty, commit };
+  useEffect(() => {
+    props.handle.current = { dirty: () => live.current.dirty, save: async () => (await live.current.commit({})) !== false };
+    return () => {
+      props.handle.current = null;
+    };
+  }, [props.handle]);
 
   const pickCli = async () => {
     try {
@@ -275,7 +323,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
   const openLogin = async () => {
     try {
       const ok = await app.desk.invoke('claude.openLogin');
-      app.toast(ok ? '터미널에서 Claude Code 로그인을 마친 뒤 [다시 확인]을 눌러 주세요.' : '터미널을 열지 못했습니다.');
+      app.toast(ok ? '열린 터미널에서 /login으로 로그인한 뒤 [다시 확인]을 눌러 주세요.' : '터미널을 열지 못했습니다. 터미널에서 claude를 실행해 /login으로 로그인한 뒤 [다시 확인]을 눌러 주세요.');
     } catch (e) {
       setErr(errText(e));
     }
@@ -307,7 +355,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
   const failBox = (() => {
     if (checking || !status) return null;
     if (limited)
-      return <InlineMsg text={msg('MSG-23')} detail={status.message} buttons={[{ label: 'API 키로 바꾸기', run: () => setAuthMode('apikey') }, { label: '다시 확인', run: recheck }]} />;
+      return <InlineMsg text={msg('MSG-23')} detail={status.message} buttons={[{ label: 'API 키로 바꾸기', run: () => setAuthMode('apikey') }, { label: '다시 확인', run: recheckAll }]} />;
     if (st === 'missing' || cli === 'fail')
       return (
         <InlineMsg
@@ -315,53 +363,80 @@ export function ClaudeDialog(props: { onClose: () => void }) {
           detail={status.message}
           buttons={[
             { label: '경로 지정', run: pickCli },
-            { label: '다시 확인', primary: true, run: recheck },
+            { label: '다시 확인', primary: true, run: recheckAll },
           ]}
         />
       );
-    if (st === 'offline' || net === 'fail') return <InlineMsg info text={msg('MSG-22')} detail={status.message ?? ck?.network.message} buttons={[{ label: '다시 확인', run: recheck }]} />;
+    if (st === 'offline' || net === 'fail') return <InlineMsg info text={msg('MSG-22')} detail={status.message ?? ck?.network.message} buttons={[{ label: '다시 확인', run: recheckAll }]} />;
     if (st === 'login' || auth === 'fail')
       return billing ? (
-        <InlineMsg text={msg('MSG-30')} detail={status.message} buttons={[{ label: '다시 확인', run: recheck }]} />
+        <InlineMsg text={msg('MSG-30')} detail={status.message} buttons={[{ label: '다시 확인', run: recheckAll }]} />
       ) : (
         <InlineMsg
           text={msg('MSG-21')}
           detail={status.message}
           buttons={[
             { label: '터미널에서 로그인', run: openLogin },
-            { label: '다시 확인', primary: true, run: recheck },
+            { label: '다시 확인', primary: true, run: recheckAll },
           ]}
         />
       );
     return null;
   })();
 
-  return (
-    <div class="scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div class="modal cp-dlg" role="dialog" aria-modal="true" aria-label="Claude 연결">
-        <div class="cp-dlg-head">
-          <Avatar size={32} />
-          <div class="grow" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <h2>Claude 연결</h2>
-            <span class="s">인터넷이 되는 PC에서만 씁니다. 분석 기능은 연결 없이도 모두 쓸 수 있습니다</span>
-          </div>
-          <button type="button" class="cp-ibtn" aria-label="닫기" onClick={props.onClose}>
-            <Icon name="close" size={18} color="var(--ink2)" />
-          </button>
-        </div>
+  const acct = accountLines(models.list?.account);
 
-        {!cfg ? (
-          <div class="modal-body">
-            {loadErr ? (
-              <div class="banner err">설정을 불러오지 못했습니다. {loadErr}</div>
-            ) : (
-              <div class="row muted">
-                <Spinner size={14} /> 불러오는 중
+  return (
+    <div class="cp-set">
+      <div class="set-page-h">
+        <h3>Claude 연결</h3>
+        <span class="s">인터넷이 되는 PC에서만 씁니다. 분석 기능은 연결 없이도 모두 쓸 수 있습니다</span>
+      </div>
+
+      {!cfg ? (
+        loadErr ? (
+          <div class="banner err">설정을 불러오지 못했습니다. {loadErr}</div>
+        ) : (
+          <div class="row muted">
+            <Spinner size={14} /> 불러오는 중
+          </div>
+        )
+      ) : (
+        <>
+          {/* 연동 켜기·끄기 */}
+          <div class={`cp-onoff${enabled ? ' on' : ''}`} role="group" aria-label="Claude 연동">
+            <Avatar size={30} />
+            <div class="t">
+              <div class="h">
+                <b>Claude 연동</b>
+                {enabled ? <span class="tag ok">켜짐</span> : <span class="tag neutral">꺼짐</span>}
+                {enabled && cfg.consentAt && <span class="at">{ymdhm(cfg.consentAt)} 동의</span>}
               </div>
+              <div class="d">
+                {enabled
+                  ? '보내는 정보는 아래와 같고, 접속 정보 파일은 읽지 않습니다. [연동 끄기]는 이 앱에서만 Claude를 끄며 PC의 Claude Code 로그인은 그대로 둡니다.'
+                  : msg('MSG-14')}
+              </div>
+              {err && (
+                <div class="e" role="alert">
+                  {err}
+                </div>
+              )}
+            </div>
+            {enabled ? (
+              <button type="button" class="btn danger" onClick={turnOff} disabled={saving}>
+                {saving && <Spinner size={13} />}
+                연동 끄기
+              </button>
+            ) : (
+              <button type="button" class="btn primary" onClick={turnOn} disabled={!canEnable} title={whyNot || undefined}>
+                {saving && <Spinner size={13} color="#fff" />}
+                연동 켜기
+              </button>
             )}
           </div>
-        ) : (
-          <div class="cp-dlg-body">
+
+          <div class="cp-set-cols">
             <div class="cp-dlg-col">
               {/* 1. 인증 방식 */}
               <section class="cp-sec" aria-label="인증 방식">
@@ -374,20 +449,41 @@ export function ClaudeDialog(props: { onClose: () => void }) {
                     <>
                       <div class="cp-auth-box">
                         <Icon name="user" size={14} color="var(--icon)" />
-                        <span class="lb">이 PC의 Claude Code 로그인</span>
-                        {loginTag}
+                        <span class="lb">
+                          <span class="em ellipsis" title={acct?.main}>
+                            {acct ? acct.main : '이 PC의 Claude Code 로그인'}
+                          </span>
+                          <span class="sub">
+                            {acct?.sub && (
+                              <span class="ellipsis" title={acct.sub}>
+                                {acct.sub}
+                              </span>
+                            )}
+                            {loginTag}
+                            {!acct && models.loading && <span>계정 확인 중</span>}
+                          </span>
+                        </span>
                         <span class="grow" />
                         <button type="button" class="btn cp-b28" onClick={openLogin}>
                           <Icon name="terminal" size={13} color="var(--ink2)" />
                           터미널에서 로그인
                         </button>
                       </div>
+                      <span class="cp-lock-note cp-switch">
+                        <span class="ic">
+                          <Icon name="refresh" size={12} color="var(--muted)" sw={1.9} />
+                        </span>
+                        <span>
+                          <b>다른 계정으로 바꾸기</b> [터미널에서 로그인] → 열린 창에 <code>/login</code> → 브라우저에서 로그인 → 여기서 [다시 확인]. 로그아웃은{' '}
+                          <code>/logout</code>
+                        </span>
+                      </span>
                       <span class="cp-lock-note">
                         <span class="ic">
                           <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
                         </span>
                         <span>
-                          로그인은 Claude Code 자체 화면(브라우저)에서 합니다. 앱은 로그인 정보를 읽거나 저장하지 않습니다
+                          로그인은 Claude Code 자체 화면(브라우저)에서 합니다. 앱은 로그인 정보를 저장하지 않고 계정 이름만 받아 보여 줍니다
                           {otherAuth && ` · 지금은 ${otherAuth}을(를) 씁니다(환경 변수가 로그인보다 우선)`}
                         </span>
                       </span>
@@ -474,7 +570,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
                 <div class="cp-sec-h">
                   <h4>연결 확인</h4>
                   {status?.checkedAt && checked && !checking && <span class="at">{hm(status.checkedAt)} 확인</span>}
-                  <button type="button" class="btn cp-b28" onClick={recheck} disabled={checking} style={{ fontSize: '12.5px' }}>
+                  <button type="button" class="btn cp-b28" onClick={() => void recheckAll()} disabled={checking} style={{ fontSize: '12.5px' }} title="CLI·인터넷·인증과 지금 계정을 다시 확인합니다">
                     {checking ? <Spinner size={13} /> : <Icon name="refresh" size={14} color="var(--ink2)" />}
                     다시 확인
                   </button>
@@ -686,45 +782,8 @@ export function ClaudeDialog(props: { onClose: () => void }) {
               </section>
             </div>
           </div>
-        )}
-
-        <div class="cp-dlg-foot">
-          <span class="msg">
-            <span class="ic">
-              <Icon name="info" size={14} color="var(--acc-d)" sw={1.9} />
-            </span>
-            {err ? (
-              <span style={{ color: 'var(--err)' }}>{err}</span>
-            ) : enabled ? (
-              <span>
-                연동 켜짐{cfg?.consentAt ? ` · ${ymdhm(cfg.consentAt)} 동의` : ''}. 보내는 정보는 위와 같고, 접속 정보 파일은 읽지 않습니다.
-              </span>
-            ) : (
-              <span>{msg('MSG-14')}</span>
-            )}
-          </span>
-          {enabled && (
-            <button type="button" class="btn danger" onClick={turnOff} disabled={saving}>
-              연동 끄기
-            </button>
-          )}
-          <button type="button" class="btn" onClick={props.onClose}>
-            취소
-          </button>
-          {enabled ? (
-            <button type="button" class="btn primary" onClick={saveOnly} disabled={saving || !cfg || !keyReady || !cloudReady} title={!keyReady ? 'API 키를 넣어 주세요' : !cloudReady ? '회사 클라우드 설정을 채워 주세요' : undefined}>
-              {saving && <Spinner size={13} color="#fff" />}
-              저장
-            </button>
-          ) : (
-            <button type="button" class="btn primary" onClick={turnOn} disabled={!canEnable} title={whyNot || undefined}>
-              {saving && <Spinner size={13} color="#fff" />}
-              연동 켜기
-            </button>
-          )}
-        </div>
-        <ModalSizer id="claude" />
-      </div>
+        </>
+      )}
     </div>
   );
 }

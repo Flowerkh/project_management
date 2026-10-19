@@ -1,5 +1,7 @@
 // 화면 점검 (v0.5): 상단 버전 · 프로젝트 이름 → 분석했던 프로젝트 목록 · 연결 아이콘 → 프로젝트 연결 ·
 // 모델 목록(Claude Code)·기본 모델·대화 중 바꾸기 · 답변 표 좌우 스크롤 · 크게 보기 · 프로젝트를 따라가는 대화 · 대화 지우기·모두 지우기
+// (v0.5.1) 설정 > Claude 연결: 지금 계정 · 다른 계정으로 바꾸기([다시 확인]) · 대화창 톱니 · [저장] · 연동 끄기/켜기 ·
+//          대화창 너비(왼쪽 가장자리)·크게 보기 양옆 크기 조절
 //   node scripts/build-desktop.mjs --dev --out <scratch>/app
 //   xvfb-run -a node scripts/e2e-ui.cjs <scratch>/app <scratch>/e2e-ui
 // Claude는 가짜 CLI(test/fake-claude)로 흉내 낸다 (실제 Claude·계정을 쓰지 않음).
@@ -82,16 +84,19 @@ function prepare() {
     await analyze(A, true);
     out.version = await win.locator('.brand-ver').innerText();
     await shot('header');
-    // 2. Claude 연결: 모델 목록 → 기본 모델 Fake Opus → 연동 켜기
+    // 2. 연동이 꺼져 있으면 [Claude] → 설정 > Claude 연결: 지금 계정 · 모델 목록 → 기본 모델 Fake Opus → 연동 켜기
     await win.click('header button:has-text("Claude")');
-    const dlg = win.locator('[role="dialog"][aria-label="Claude 연결"]');
+    const dlg = win.locator('[role="dialog"][aria-label="설정"]');
     await dlg.waitFor();
+    out.firstTab = await win.$eval('.set-tab[aria-selected="true"]', (e) => e.textContent);
     await win.waitForFunction(() => document.querySelectorAll('#cp-model option').length >= 4, null, { timeout: 30000 });
     out.modelOptions = await win.$$eval('#cp-model option', (os) => os.map((o) => o.textContent));
+    await win.waitForFunction(() => document.querySelector('.cp-auth-box .em')?.textContent === 'tester@example.com', null, { timeout: 30000 });
+    out.account = await win.$eval('.cp-auth-box .lb', (e) => e.textContent);
     await win.selectOption('#cp-model', 'fake-opus');
-    await shot('pop03-model');
-    await win.waitForSelector('button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
-    await win.click('button:has-text("연동 켜기")');
+    await shot('settings-claude-off');
+    await win.waitForSelector('#set-page-claude button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
+    await win.click('#set-page-claude button:has-text("연동 켜기")');
     await dlg.waitFor({ state: 'detached', timeout: 20000 });
     // 3. 대화: 입력창 아래 모델 = Fake Opus, 표가 있는 답
     await win.click('header button:has-text("Claude")');
@@ -114,9 +119,107 @@ function prepare() {
     await sleep(400);
     out.expanded = await win.$eval('.cp-panel', (p) => { const r = p.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), fixed: getComputedStyle(p).position }; });
     await shot('chat-expanded');
+    // 크게 보기 위에서 연 확인 창은 그 위에 보인다
+    await win.click('button[aria-label="이 대화 지우기"]');
+    await win.waitForSelector('.scrim .modal');
+    out.confirmOnTop = await win.evaluate(() => {
+      const m = document.querySelector('.scrim .modal');
+      const r = m.getBoundingClientRect();
+      return !!document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('.scrim .modal');
+    });
+    await win.click('.scrim .modal-foot button:has-text("취소")');
+    await win.waitForSelector('.scrim', { state: 'detached' });
     await win.keyboard.press('Escape');
     await sleep(300);
     out.collapsed = await win.$eval('.cp-panel', (p) => getComputedStyle(p).position);
+
+    // 5-1. 옆 대화창 너비: 왼쪽 가장자리를 끌면 넓어지고 기억 · 크게 보기는 양옆 가장자리로 너비 조절 · 두 번 누르면 원래대로
+    const panelW = () => win.$eval('.cp-panel', (p) => Math.round(p.getBoundingClientRect().width));
+    const w0 = await panelW();
+    const rz = await win.locator('.cp-rz').boundingBox();
+    await win.mouse.move(rz.x + rz.width / 2, rz.y + 300);
+    await win.mouse.down();
+    await win.mouse.move(rz.x + rz.width / 2 - 150, rz.y + 300, { steps: 6 });
+    await win.mouse.up();
+    const w1 = await panelW();
+    const saved = await win.evaluate(() => localStorage.getItem('pa.chatWidth'));
+    await shot('chat-wider');
+    await win.click('button[aria-label="크게 보기"]');
+    await sleep(300);
+    const e0 = await panelW();
+    const side = await win.locator('.cp-panel .rz-w').boundingBox();
+    await win.mouse.move(side.x + side.width / 2, side.y + 200);
+    await win.mouse.down();
+    await win.mouse.move(side.x + side.width / 2 - 40, side.y + 200, { steps: 4 });
+    await win.mouse.up();
+    const e1 = await panelW();
+    await win.keyboard.press('Escape');
+    await sleep(300);
+    const wBack = await panelW();
+    await win.locator('.cp-rz').dblclick();
+    await sleep(200);
+    out.resize = { w0, w1, saved, popup: [e0, e1], wBack, wReset: await panelW(), savedAfterReset: await win.evaluate(() => localStorage.getItem('pa.chatWidth')) };
+
+    // 5-2. 대화창 톱니 → 설정 > Claude 연결 (Esc는 설정 창만 닫음)
+    await win.click('button[aria-label="Claude 연결 설정"]');
+    await dlg.waitFor();
+    out.gearTab = await win.$eval('.set-tab[aria-selected="true"]', (e) => e.textContent);
+    await win.waitForFunction(() => document.querySelector('.cp-auth-box .em')?.textContent === 'tester@example.com', null, { timeout: 30000 });
+    await shot('settings-from-gear');
+    await win.keyboard.press('Escape');
+    await dlg.waitFor({ state: 'detached', timeout: 5000 });
+    out.panelAfterEsc = !!(await win.$('.cp-panel'));
+
+    // 5-3. 다른 계정으로 바꾸기: (터미널 /login 대신) 가짜 CLI 계정을 바꾸고 [설정] → Claude 연결 → [다시 확인]
+    fs.mkdirSync(env.PA_FAKE_STATE_DIR, { recursive: true });
+    fs.writeFileSync(path.join(env.PA_FAKE_STATE_DIR, 'account.json'), JSON.stringify({ email: 'other@example.com', organization: 'Other Org', subscriptionType: 'pro', apiProvider: 'firstParty' }));
+    await win.click('header button[aria-label="설정"]');
+    await dlg.waitFor();
+    out.settingsFirstTab = await win.$eval('.set-tab[aria-selected="true"]', (e) => e.textContent);
+    await win.click('#set-tab-claude');
+    await win.click('#set-page-claude .cp-sec-h button:has-text("다시 확인")');
+    await win.waitForFunction(() => document.querySelector('.cp-auth-box .em')?.textContent === 'other@example.com', null, { timeout: 30000 });
+    out.switched = await win.$eval('.cp-auth-box .lb', (e) => e.textContent);
+    await shot('settings-account-switched');
+    // 기본 모델을 바꾸고 아래 [저장] → 닫힘 → 다시 열면 그대로
+    await win.selectOption('#cp-model', 'fake-haiku');
+    await win.click('.set-dlg .modal-foot button.primary');
+    await dlg.waitFor({ state: 'detached', timeout: 30000 });
+    await win.click('header button[aria-label="설정"]');
+    await win.click('#set-tab-claude');
+    await win.waitForFunction(() => document.querySelectorAll('#cp-model option').length >= 4, null, { timeout: 30000 });
+    out.savedModel = await win.$eval('#cp-model', (e) => e.value);
+    await win.selectOption('#cp-model', 'fake-opus');
+    await win.click('.set-dlg .modal-foot button.primary');
+    await dlg.waitFor({ state: 'detached', timeout: 30000 });
+    // 다음 메시지는 새 로그인으로 (쉬던 CLI는 [다시 확인] 때 닫힘 → resume으로 이어 감)
+    const nStart = fs.readFileSync(env.PA_FAKE_LOG, 'utf8').split('\n').filter(Boolean).length;
+    await win.fill('textarea.cp-ta', '계정 바꾼 뒤 질문');
+    await win.press('textarea.cp-ta', 'Enter');
+    await win.waitForFunction(() => [...document.querySelectorAll('.cp-user')].some((m) => m.textContent.includes('계정 바꾼 뒤 질문')), null, { timeout: 30000 });
+    await win.waitForFunction(() => !document.querySelector('.cp-stop') && document.querySelector('.cp-body')?.textContent.includes('네, 확인했습니다'), null, { timeout: 30000 });
+    await sleep(500);
+    const after = fs.readFileSync(env.PA_FAKE_LOG, 'utf8').split('\n').filter(Boolean).slice(nStart).map((l) => JSON.parse(l));
+    out.chatStart = after.filter((x) => x.ev === 'start' && !x.argv.includes('--max-turns=1') && x.argv.some((a) => a.startsWith('--resume'))).map((x) => x.account);
+
+    // 5-4. 연동 끄기 → [Claude]는 다시 설정 > Claude 연결 → 연동 켜기
+    await win.click('header button[aria-label="설정"]');
+    await win.click('#set-tab-claude');
+    await win.waitForSelector('#set-page-claude button:has-text("연동 끄기")');
+    await win.click('#set-page-claude button:has-text("연동 끄기")');
+    await dlg.waitFor({ state: 'detached', timeout: 20000 });
+    out.offToast = await win.locator('.toast').innerText().catch(() => '');
+    out.panelAfterOff = !!(await win.$('.cp-panel'));
+    if (out.panelAfterOff) await win.click('button[aria-label="닫기"][title="닫기 (Esc)"]');
+    await win.click('header button:has-text("Claude")');
+    await dlg.waitFor();
+    out.offTab = await win.$eval('.set-tab[aria-selected="true"]', (e) => e.textContent);
+    await shot('settings-claude-turn-on-again');
+    await win.waitForSelector('#set-page-claude button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
+    await win.click('#set-page-claude button:has-text("연동 켜기")');
+    await dlg.waitFor({ state: 'detached', timeout: 20000 });
+    await win.click('header button:has-text("Claude")');
+    await win.waitForSelector('textarea.cp-ta');
     // 6. 다른 프로젝트 분석 → 패널이 그 프로젝트(새 대화)로
     await analyze(B, false);
     await sleep(600);
@@ -179,6 +282,23 @@ function prepare() {
     assert.ok(out.modelOptions[0].startsWith('Claude Code 기본값'));
     assert.ok(out.table.scroll && out.table.cellW >= 60, '표는 좌우 스크롤, 칸이 한 자 폭으로 줄지 않음');
     assert.ok(out.argvModel.some((a) => a.includes('fake-opus')), '기본 모델로 시작 (--model)');
+    assert.match(out.firstTab, /Claude 연결/, '꺼져 있을 때 [Claude] → 설정의 Claude 연결');
+    assert.match(out.account, /tester@example\.com/);
+    assert.match(out.account, /Fake Org · Max 구독/);
+    assert.ok(out.resize.w1 >= out.resize.w0 + 140 && Number(out.resize.saved) === out.resize.w1, `대화창 너비: ${JSON.stringify(out.resize)}`);
+    assert.ok(Math.abs(out.resize.popup[1] - out.resize.popup[0] - 80) <= 3, `크게 보기 양옆: ${JSON.stringify(out.resize)}`);
+    assert.equal(out.resize.wBack, out.resize.w1, '크게 보기에서 돌아와도 고른 너비');
+    assert.ok(out.resize.wReset === out.resize.w0 && out.resize.savedAfterReset === null, '두 번 누르면 원래 너비');
+    assert.match(out.gearTab, /Claude 연결/);
+    assert.ok(out.panelAfterEsc, 'Esc는 설정 창만 닫음');
+    assert.match(out.settingsFirstTab, /분석/);
+    assert.match(out.switched, /other@example\.com/);
+    assert.match(out.switched, /Other Org · Pro 구독/);
+    assert.equal(out.savedModel, 'fake-haiku', '설정 [저장]');
+    assert.deepEqual(out.chatStart, ['other@example.com'], '[다시 확인] 뒤 다음 메시지는 새 로그인으로 이어 감');
+    assert.match(out.offToast, /연동을 껐습니다/);
+    assert.match(out.offTab, /Claude 연결/);
+    assert.ok(out.confirmOnTop, '크게 보기 위의 확인 창');
     assert.equal(out.expanded.fixed, 'fixed');
     assert.ok(out.expanded.w >= 900, '크게 보기 폭');
     assert.equal(out.collapsed, 'relative');

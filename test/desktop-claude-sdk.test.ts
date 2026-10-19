@@ -357,6 +357,8 @@ test('모델: 실제 SDK + 가짜 CLI — initialize의 모델 목록, --model�
   assert.equal(list.defaultName, 'Default (recommended)');
   assert.equal(list.defaultDescription, 'Fake Sonnet · 시험용 기본 모델');
   assert.deepEqual(list.models.map((m) => [m.value, m.name]), [['fake-opus', 'Fake Opus'], ['fake-haiku', 'Fake Haiku']]);
+  // 같은 initialize 응답의 계정 (토큰 출처는 빼고)
+  assert.deepEqual(list.account, { email: 'tester@example.com', organization: 'Fake Org', subscription: 'max', provider: 'firstParty' });
   // 목록만 받는 실행은 사용자 메시지를 보내지 않는다 (API 요청 없음)
   const listRun = logLines(log).filter((x) => x.ev === 'start').pop()!;
   assert.ok(!logLines(log).some((x) => x.ev === 'user' && x.pid === listRun.pid));
@@ -379,5 +381,22 @@ test('모델: 실제 SDK + 가짜 CLI — initialize의 모델 목록, --model�
   await call('claude.send', conv.id, '셋');
   await waitFor(() => !lastState(conv.id)?.running && items(conv.id).filter((i) => i.type === 'assistant').length >= 3, 20000, 'turn 3');
   await waitFor(() => lastState(conv.id)?.activeModel === 'fake-sonnet', 5000, 'activeModel default');
+
+  // 터미널에서 다른 계정으로 로그인한 것처럼 → [다시 확인] → 목록에 새 계정, 다음 메시지는 새 CLI(새 로그인)로 이어 감
+  const acct = path.join(process.env.PA_FAKE_STATE_DIR!, 'account.json');
+  fs.writeFileSync(acct, JSON.stringify({ email: 'other@example.com', organization: 'Other Org', subscriptionType: 'pro', apiProvider: 'firstParty' }));
+  try {
+    await call('claude.status', true);
+    assert.deepEqual((await call('claude.models', true)).account, { email: 'other@example.com', organization: 'Other Org', subscription: 'pro', provider: 'firstParty' });
+    const before = logLines(log).filter((x) => x.ev === 'start').length;
+    await call('claude.send', conv.id, '넷');
+    await waitFor(() => !lastState(conv.id)?.running && items(conv.id).filter((i) => i.type === 'assistant').length >= 4, 20000, 'turn 4');
+    const starts = logLines(log).filter((x) => x.ev === 'start').slice(before);
+    const chat = starts.find((x) => x.argv.includes('--resume') || x.argv.some((a: string) => a.startsWith('--resume')));
+    assert.ok(chat, JSON.stringify(starts.map((x) => x.argv)));
+    assert.equal(chat.account, 'other@example.com');
+  } finally {
+    fs.rmSync(acct, { force: true });
+  }
   delete process.env.PA_FAKE_LOG;
 });

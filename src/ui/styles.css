@@ -119,6 +119,15 @@ svg.ic { flex: none; display: block; fill: none; stroke: currentColor; stroke-li
 .hdr-info .val .pct { font-weight: 500; color: var(--ink2); }
 .hdr-info .val .dotsep { color: var(--faint); font-weight: 400; }
 .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+/* 좁은 창: 사용 언어·DB가 먼저 줄어(잘림) 오른쪽 버튼이 밀려나지 않게. 1280px 미만이면 버튼은 아이콘만 */
+.hdr-infos { min-width: 0; flex: 0 4 auto; }
+.proj-wrap > .proj-chip { flex: 0 1 auto; min-width: 56px; }
+.hdr-infos > div { min-width: 0; flex: 0 1 auto; }
+.hdr-infos .hdr-info { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.hdr-infos .hdr-info .val { min-width: 0; max-width: 100%; overflow: hidden; }
+@media (max-width: 1279px) {
+  .hdr-right .btn-t { display: none; }
+}
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 14px;
@@ -342,7 +351,7 @@ button.stat:hover { border-color: var(--acc-line); }
 .log .ln .m { overflow: hidden; text-overflow: ellipsis; }
 
 /* ------------------------------------------------------------ 팝업·팝오버 */
-.scrim { position: fixed; inset: 0; background: rgba(31, 41, 51, 0.35); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; }
+.scrim { position: fixed; inset: 0; background: rgba(31, 41, 51, 0.35); z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; }
 .modal { position: relative; width: min(720px, calc(100vw - 40px)); max-height: calc(100vh - 120px); overflow: hidden; background: #fff; border: 1px solid #bcc5cf; border-radius: 12px; box-shadow: 0 24px 56px rgba(31, 41, 51, 0.3); display: flex; flex-direction: column; }
 .modal.sm { width: min(460px, calc(100vw - 40px)); }
 .modal-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 12px 20px; border-bottom: 1px solid var(--line); }
@@ -360,6 +369,32 @@ button.stat:hover { border-color: var(--acc-line); }
 .rz-se:hover { color: var(--acc); }
 body.rz-drag-xy, body.rz-drag-xy * { cursor: nwse-resize !important; user-select: none; }
 body.rz-drag-y, body.rz-drag-y * { cursor: ns-resize !important; user-select: none; }
+/* 양옆 가장자리 (sides): 오른쪽은 본문 스크롤 막대를 덜 가리게 얇게 */
+.rz-w, .rz-e { position: absolute; top: 14px; bottom: 20px; cursor: ew-resize; z-index: 3; touch-action: none; }
+.rz-w { left: 0; width: 6px; }
+.rz-e { right: 0; width: 4px; }
+.rz-w:hover, .rz-e:hover { background: linear-gradient(90deg, transparent 1px, var(--acc-line) 1px, var(--acc-line) 3px, transparent 3px); }
+body.rz-drag-x, body.rz-drag-x * { cursor: ew-resize !important; user-select: none; }
+
+/* 설정: 왼쪽 칸(항목) + 오른쪽(페이지). 페이지를 옮겨도 창 크기는 그대로 */
+.modal.set-dlg { width: min(1100px, calc(100vw - 40px)); height: min(860px, calc(100vh - 120px)); }
+.set-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.set-nav { flex: none; width: 196px; display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; border-right: 1px solid var(--line); background: var(--surf); overflow: auto; }
+.set-tab { flex: none; display: flex; align-items: flex-start; gap: 9px; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; text-align: left; color: var(--ink2); cursor: pointer; }
+.set-tab:hover { background: var(--surf2); }
+.set-tab.on { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), inset 3px 0 0 var(--acc); }
+.set-tab:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.set-tab .ic { flex: none; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.set-tab .tx { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-tab .l { font-size: 13.5px; font-weight: 600; }
+.set-tab .h { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-main { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; container-type: inline-size; }
+.set-page { padding: 16px 22px 22px; display: flex; flex-direction: column; gap: 16px; }
+.set-page[hidden] { display: none; }
+.set-page > * { flex-shrink: 0; }
+.set-page-h { display: flex; flex-direction: column; gap: 3px; }
+.set-page-h h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink); }
+.set-page-h .s { font-size: 12.5px; color: var(--muted); }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 13px; font-weight: 600; }
 .field .help { font-size: 12px; color: var(--muted); line-height: 1.5; }

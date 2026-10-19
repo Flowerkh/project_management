@@ -1,5 +1,5 @@
 // 대화상자 크기 조절: 오른쪽 아래 모서리(가로·세로)나 아래 가장자리(세로)를 마우스로 끈다.
-// 오른쪽 가장자리는 본문 스크롤 막대와 겹쳐 손잡이를 두지 않는다.
+// 양옆 가장자리(가로)는 sides일 때만 둔다 (오른쪽 손잡이는 본문 스크롤 막대와 겹치지 않게 얇게).
 // 크기는 대화상자마다 이 PC(브라우저 저장소)에 기억하고, 모서리를 두 번 누르면 원래 크기로 돌아간다.
 // 대화상자(.modal)의 마지막 자식으로 넣는다. 화면보다 커지지 않게 최대 크기는 창 크기를 따른다.
 import { useLayoutEffect, useRef } from 'preact/hooks';
@@ -52,8 +52,9 @@ function reset(modal: HTMLElement): void {
 /**
  * id: 크기를 기억할 이름 · minWidth: 이보다 좁게는 못 줄임 (기본 420, 처음 크기가 더 작으면 처음 크기)
  * center: 창이 가로·세로 모두 가운데 정렬 (부모가 가운데로 놓지 않고 창 스스로 margin:auto로 가운데에 있을 때)
+ * sides: 왼쪽·오른쪽 가장자리로도 너비 조절
  */
-export function ModalSizer(props: { id: string; minWidth?: number; center?: boolean }) {
+export function ModalSizer(props: { id: string; minWidth?: number; center?: boolean; sides?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const modal = () => ref.current?.parentElement ?? null;
 
@@ -67,7 +68,8 @@ export function ModalSizer(props: { id: string; minWidth?: number; center?: bool
     };
   }, [props.id]);
 
-  const start = (e: PointerEvent, ax: boolean, ay: boolean) => {
+  /** dx: 너비를 바꾸는 쪽 (1 오른쪽 가장자리 · -1 왼쪽 가장자리 · 0 바꾸지 않음) */
+  const start = (e: PointerEvent, dx: -1 | 0 | 1, ay: boolean) => {
     const m = modal();
     if (!m || e.button !== 0) return;
     e.preventDefault();
@@ -88,10 +90,10 @@ export function ModalSizer(props: { id: string; minWidth?: number; center?: bool
     const size: Size = { ...(load(props.id) ?? {}) };
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
-    const dragCls = ax ? 'rz-drag-xy' : 'rz-drag-y';
+    const dragCls = dx && ay ? 'rz-drag-xy' : dx ? 'rz-drag-x' : 'rz-drag-y';
     document.body.classList.add(dragCls);
     const move = (ev: PointerEvent) => {
-      if (ax) size.w = Math.round(Math.max(minW, Math.min(maxW, r.width + kx * (ev.clientX - x0))));
+      if (dx) size.w = Math.round(Math.max(minW, Math.min(maxW, r.width + dx * kx * (ev.clientX - x0))));
       if (ay) size.h = Math.round(Math.max(minH, Math.min(maxH, r.height + ky * (ev.clientY - y0))));
       apply(m, size, ky === 2 ? null : r.top);
     };
@@ -115,8 +117,14 @@ export function ModalSizer(props: { id: string; minWidth?: number; center?: bool
 
   return (
     <div ref={ref} class="rz">
-      <div class="rz-s" aria-hidden="true" onPointerDown={(e) => start(e, false, true)} />
-      <div class="rz-se" title="끌어서 크기 조절 · 두 번 누르면 원래 크기" onPointerDown={(e) => start(e, true, true)} onDblClick={restore}>
+      <div class="rz-s" aria-hidden="true" onPointerDown={(e) => start(e, 0, true)} />
+      {props.sides && (
+        <>
+          <div class="rz-w" aria-hidden="true" title="끌어서 너비 조절 · 두 번 누르면 원래 크기" onPointerDown={(e) => start(e, -1, false)} onDblClick={restore} />
+          <div class="rz-e" aria-hidden="true" title="끌어서 너비 조절 · 두 번 누르면 원래 크기" onPointerDown={(e) => start(e, 1, false)} onDblClick={restore} />
+        </>
+      )}
+      <div class="rz-se" title="끌어서 크기 조절 · 두 번 누르면 원래 크기" onPointerDown={(e) => start(e, 1, true)} onDblClick={restore}>
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path d="M9 3 3 9M9 6.5 6.5 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
         </svg>

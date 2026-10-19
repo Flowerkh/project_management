@@ -2,7 +2,7 @@
 // CLI·인증 설정이 같으면 기억해 두고, 설정이 바뀌거나 [새로고침]이면 다시 받는다.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ClaudeModel, ClaudeModelList } from '../../shared/desktop-api';
+import type { ClaudeAccount, ClaudeModel, ClaudeModelList } from '../../shared/desktop-api';
 import { host } from '../host';
 import { dataDir, nowIso } from '../store';
 import { authKey, getStored } from './config';
@@ -36,6 +36,23 @@ export function toModelList(raw: unknown): Omit<ClaudeModelList, 'at'> {
     models.push({ value, name, ...(typeof m.resolvedModel === 'string' && m.resolvedModel ? { resolved: m.resolvedModel } : {}), ...(description ? { description } : {}) });
   }
   return { models, ...(defaultName ? { defaultName } : {}), ...(defaultDescription ? { defaultDescription } : {}) };
+}
+
+/** SDK accountInfo → 화면에 보일 것만 (토큰·키 출처는 빼고) */
+export function toAccount(raw: unknown): ClaudeAccount | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 200) : undefined);
+  const a: ClaudeAccount = {};
+  const email = str(r.email);
+  const organization = str(r.organization);
+  const subscription = str(r.subscriptionType);
+  const provider = str(r.apiProvider);
+  if (email) a.email = email;
+  if (organization) a.organization = organization;
+  if (subscription) a.subscription = subscription;
+  if (provider) a.provider = provider;
+  return Object.keys(a).length ? a : undefined;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -126,8 +143,11 @@ export class ModelCatalog {
       });
       const raw = await withTimeout(q.supportedModels(), this.deps.timeoutMs ?? 30000);
       const list = toModelList(raw);
-      if (!list.models.length && !list.defaultName) return { ...list, error: '이 Claude Code는 모델 목록을 알려 주지 않습니다. 모델 이름을 직접 입력할 수 있습니다.', at: nowIso() };
-      return { ...list, at: nowIso() };
+      // 같은 initialize 응답에 들어 있는 계정 (다른 계정으로 바꿨는지 보여 주려고)
+      const account = toAccount(await withTimeout(q.accountInfo(), 5000).catch(() => null));
+      const withAccount = account ? { ...list, account } : list;
+      if (!list.models.length && !list.defaultName) return { ...withAccount, error: '이 Claude Code는 모델 목록을 알려 주지 않습니다. 모델 이름을 직접 입력할 수 있습니다.', at: nowIso() };
+      return { ...withAccount, at: nowIso() };
     } catch (e) {
       const msg = (e as Error)?.message ?? String(e);
       return { models: [], error: `모델 목록을 받지 못했습니다: ${msg}${stderr.trim() ? ` (${stderr.trim().split('\n').pop()})` : ''}`, at: nowIso() };

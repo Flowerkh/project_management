@@ -2,6 +2,7 @@
 dist/web/project-analyzer.html 을 file:// 로 열어 ?mock=1 상태별로 1440×900 캡처 → dist/shots/*.png
 레이아웃 문제(가로 넘침·잘린 글자)를 콘솔에 함께 출력한다."""
 import os
+import re
 import sys
 
 from playwright.sync_api import sync_playwright
@@ -25,6 +26,7 @@ SHOTS = {
     'pop-lang': '?mock=1&pop=lang',
     'pop-db': '?mock=1&pop=db',
     'settings': '?mock=1&modal=settings',
+    'desk-settings': '?mock=1&desk&modal=settings',
     'viewer': '?mock=1&view=screen:S022',
     'search': '?mock=1',
     # 데스크톱 기능 (가짜 메인 프로세스)
@@ -33,6 +35,7 @@ SHOTS = {
     'desk-chat': '?mock=1&desk&chat&view=screen:S022',
     'desk-project': '?mock=1&desk&dmodal=project',
     'desk-claude': '?mock=1&desk&dmodal=claude',
+    'desk-claude-narrow': '?mock=1&desk&dmodal=claude&w=1100&h=700',
     'desk-changes': '?mock=1&desk&view=changes:W1',
     'desk-history': '?mock=1&desk&view=history',
     # 작업 사본·작업 이력 (V): 코드 적용 기록 선택, Claude 패널을 연 좁은 본문
@@ -93,6 +96,10 @@ def main(names):
         pg.on('console', lambda m: m.type == 'error' and errors.append(m.text))
         for n in names:
             errors.clear()
+            # &w=…&h=… : 그 창 크기로 (좁은 화면 점검)
+            w = re.search(r'[&?]w=(\d+)', SHOTS[n])
+            h = re.search(r'[&?]h=(\d+)', SHOTS[n])
+            pg.set_viewport_size({'width': int(w.group(1)) if w else 1440, 'height': int(h.group(1)) if h else 900})
             pg.goto('file://' + HTML + SHOTS[n])
             if fcss:
                 pg.add_style_tag(content=fcss)

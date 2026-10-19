@@ -99,8 +99,8 @@ class Session {
   apiKeySource?: string;
   guard: GuardContext | null = null;
   cfg: StoredConfig | null = null;
-  /** 열린 CLI가 모델 바꾸기를 못 함 → 다음 메시지 때 새 모델로 다시 연다 */
-  modelStale = false;
+  /** 다음 메시지 때 CLI를 새로 연다 (열린 CLI가 모델 바꾸기를 못 함 · 응답 중에 설정·로그인이 바뀜) */
+  reopen = false;
   constructor(public conv: StoredConversation) {}
 }
 
@@ -226,8 +226,8 @@ export class ClaudeManager {
       await new Promise<void>((r) => s.waiters.push(r));
     }
     this.clearIdle(s);
-    if (s.modelStale) {
-      s.modelStale = false;
+    if (s.reopen) {
+      s.reopen = false;
       this.closeQuery(s);
     }
     const content = s.conv.contextSent ? body : buildFirstMessage(body, s.conv.context, s.conv.references);
@@ -280,7 +280,7 @@ export class ClaudeManager {
           await withTimeout(s.q.setModel(model || undefined), 5000);
         } catch {
           // 이 CLI가 모델 바꾸기를 못 하면 다음 메시지 때 새 모델로 다시 연다 (대화는 이어 감)
-          s.modelStale = true;
+          s.reopen = true;
         }
       }
       this.addNotice(s, `모델을 ${this.models?.label(model) ?? (model || 'Claude Code 기본값')}(으)로 바꿨습니다${s.running ? ' · 다음 응답부터 적용됩니다' : ''}`);
@@ -356,9 +356,15 @@ export class ClaudeManager {
     return host().saveFile(exportFileName(s.conv), md, [{ name: 'Markdown', extensions: ['md'] }]);
   }
 
-  /** 설정이 바뀌면 쉬고 있는 Claude 프로세스를 닫는다 (다음 메시지에 새 환경으로 다시 연다) */
+  /**
+   * 설정·로그인이 바뀜: 쉬고 있는 Claude 프로세스는 바로 닫고, 응답 중인 것은 다음 메시지 때 새로 연다
+   * (다음 메시지에 새 환경·새 로그인으로 다시 열고 대화는 이어 간다)
+   */
   closeIdle(): void {
-    for (const s of this.sessions.values()) if (!s.running && !s.pendings.length) this.closeQuery(s);
+    for (const s of this.sessions.values()) {
+      if (!s.running && !s.pendings.length) this.closeQuery(s);
+      else if (s.q) s.reopen = true;
+    }
   }
 
   /** 연동을 끔 / 앱 종료 */

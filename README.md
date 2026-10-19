@@ -3,9 +3,9 @@
 프로젝트 폴더를 불러와 **[Run]** 을 누르면 어떤 시스템인지와 **DB 테이블·메뉴·화면·배치**의 관계를 정리해 보여 주는 분석 도구입니다.
 Windows 데스크톱 앱(Electron)과 파일 하나짜리 HTML로 동작하고, 분석은 인터넷 없이 PC 안에서 끝납니다.
 
-- 현재 버전: **v0.5** (프로토타입) · 버전별 변경은 [CHANGELOG.md](CHANGELOG.md)
+- 현재 버전: **v0.5.1** (프로토타입) · 버전별 변경은 [CHANGELOG.md](CHANGELOG.md)
   - 분석 엔진·결과 화면 (Java·JSP·MyBatis, PHP, Go, Python, Android·React Native·Flutter, 셸·배치)
-  - 데스크톱 앱: Claude 연동(대화형 이슈 처리·수정·새 프로젝트, 모델 선택), 형상관리(Git·SVN)·작업 이력, DB 연결(조회 도구·쿼리 확인 실행·메뉴 DB 읽기)
+  - 데스크톱 앱: Claude 연동(대화형 이슈 처리·수정·새 프로젝트, 모델 선택, 설정 > Claude 연결에서 계정·연동 관리), 형상관리(Git·SVN)·작업 이력, DB 연결(조회 도구·쿼리 확인 실행·메뉴 DB 읽기)
 - 다음: Excel·HTML 보고서 내보내기, JavaScript(Express·NestJS·React·Vue) 화면 추출, AI 요약
 
 ## 분석 대상
@@ -72,18 +72,20 @@ npx tsx scripts/analyze.ts <폴더>  # 명령줄 분석 (결과 JSON)
 
 통합 점검(리눅스, xvfb): `node scripts/build-desktop.mjs --dev --out /tmp/pa/app` 뒤
 `xvfb-run -a node scripts/e2e-desktop.cjs /tmp/pa/app /tmp/pa/e2e` (분석 → Claude(가짜 CLI) → DB(MariaDB) → 변경 적용·커밋·푸시 → 쿼리 실행 → 되돌리기),
-`scripts/e2e-newproject.cjs` (새 프로젝트), `scripts/e2e-ui.cjs` (버전 표시·프로젝트 목록·모델 선택·표·크게 보기·대화 지우기).
+`scripts/e2e-newproject.cjs` (새 프로젝트), `scripts/e2e-ui.cjs` (버전 표시·프로젝트 목록·모델 선택·표·크게 보기·대화 지우기·
+설정 > Claude 연결(계정 바꾸기·연동 끄기)·대화창 너비).
 
 ## 버전
 
 `package.json`과 `desktop/package.json`의 version을 같이 올리고(`npm version <버전> --no-git-tag-version`을 두 폴더에서 — package-lock.json도 함께 바뀜),
-[CHANGELOG.md](CHANGELOG.md)에 바뀐 내용을 적습니다. 앱 상단에 `v0.5`처럼 보입니다(끝자리가 0이면 생략).
+[CHANGELOG.md](CHANGELOG.md)에 바뀐 내용을 적습니다. 앱 상단에 `v0.5.1`처럼 보입니다(끝자리가 0이면 생략해 `v0.5`).
 
 ## 원칙
 
 - 소스는 PC 밖으로 나가지 않습니다. Claude 연동을 켤 때만, 동의한 범위(질문·붙인 분석 결과·Claude가 읽은 소스 일부·가린 조회 결과)가 Claude로 전송됩니다.
 - DB 접속 정보(주소·계정·비밀번호)는 화면·소스 보기·Claude에 보이지 않게 가립니다.
 - Claude가 고친 코드와 SELECT가 아닌 쿼리는 사용자가 확인([적용]·[실행])한 뒤에만 원본과 DB에 반영됩니다. 운영 DB 조회는 항상 확인합니다.
-- 앱은 Claude Code를 수정하지 않고 Claude 계정 정보를 읽거나 저장하지 않습니다(로그인은 Claude Code 자체 화면에서).
+- 앱은 Claude Code를 수정하지 않고 로그인 정보(토큰)를 읽거나 저장하지 않습니다(로그인은 Claude Code 자체 화면에서).
+  계정 이름(이메일·조직)은 Claude Code가 알려 준 것을 화면에만 보여 주고 저장하지 않습니다.
 
 개인 사용 목적의 프로토타입입니다.
