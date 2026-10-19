@@ -3,6 +3,7 @@ import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useRef } from 'preact/hooks';
 import { ENV_LABEL, type DbKind, type Env, type QueryCard } from '../../../shared/desktop-api';
+import { ModalSizer } from '../../components/ModalSizer';
 import { Icon } from '../../icons';
 import './db.css';
 
@@ -106,6 +107,7 @@ export function DbModal(props: {
         </div>
         <div class="modal-body">{props.children}</div>
         {props.foot && <div class="modal-foot">{props.foot}</div>}
+        {props.cls && props.cls !== 'sm' && <ModalSizer id={`db:${props.cls}`} />}
       </div>
     </div>
   );

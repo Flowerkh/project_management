@@ -18,13 +18,6 @@ const ENVS: Env[] = ['dev', 'qa', 'prod'];
 const ENV_ORDER: Record<Env, number> = { dev: 0, qa: 1, prod: 2 };
 const PATTERN = /^[A-Za-z0-9_$#*]+(:[^:]+)?$/;
 
-/** 고른 항목 글자에 맞춘 선택 상자 너비 (한글 1em, 그 밖 0.6em) */
-function fitWidth(label: string): string {
-  let em = 0;
-  for (const ch of label) em += /[\u3131-\uD7A3]/.test(ch) ? 0.93 : ch === ' ' ? 0.28 : 0.6;
-  return `calc(${em.toFixed(2)}em + 18px)`;
-}
-
 const SELECT_LABEL: Record<EnvRule['selectMode'], string> = { auto: '바로 실행', confirm: '매번 확인' };
 const CHANGE_LABEL: Record<EnvRule['changeMode'], string> = { confirm: '확인 후 실행', typeName: 'DB 이름 입력 후 실행' };
 
@@ -274,15 +267,15 @@ export function ProjectDbSection(props: ProjectSectionProps) {
           <colgroup>
             <col style={{ width: '52px' }} />
             <col />
-            <col style={{ width: '152px' }} />
-            <col style={{ width: '84px' }} />
+            <col style={{ width: '144px' }} />
+            <col style={{ width: '96px' }} />
           </colgroup>
           <thead>
             <tr>
               <th>환경</th>
-              <th>Claude 조회(SELECT)</th>
-              <th>SELECT 외 쿼리</th>
-              <th class="c">개인정보 가림</th>
+              <th title="Claude 조회(SELECT): Claude가 이 환경의 DB를 SELECT로 조회하는 방식(바로 실행·매번 확인), 한 번에 가져올 최대 행 수, 시간 제한(초)">Claude 조회(SELECT)</th>
+              <th title="SELECT 외 쿼리: INSERT·UPDATE·DELETE 같은 쿼리는 Claude가 실행하지 못하고 쿼리 카드로 올립니다. [실행]을 누를 때 확인하는 방식(확인 후 실행·DB 이름 입력 후 실행)">SELECT 외 쿼리</th>
+              <th class="c" title="개인정보 가림: 켜면 조회 결과에서 아래 '가림 대상' 컬럼의 값을 ****로 가린 뒤 Claude에 보냅니다">개인정보 가림</th>
             </tr>
           </thead>
           <tbody>
@@ -304,7 +297,6 @@ export function ProjectDbSection(props: ProjectSectionProps) {
                       ) : (
                         <select
                           class="db-ghost"
-                          style={{ width: fitWidth(SELECT_LABEL[r.selectMode]) }}
                           aria-label={`${ENV_LABEL[env]} Claude 조회 방식`}
                           value={r.selectMode}
                           onChange={(e) => setRule(env, { selectMode: (e.target as HTMLSelectElement).value as EnvRule['selectMode'] })}
@@ -327,7 +319,6 @@ export function ProjectDbSection(props: ProjectSectionProps) {
                     ) : (
                       <select
                         class="db-ghost"
-                        style={{ width: fitWidth(CHANGE_LABEL[r.changeMode]) }}
                         aria-label={`${ENV_LABEL[env]} SELECT 외 쿼리 확인 방식`}
                         value={r.changeMode}
                         onChange={(e) => setRule(env, { changeMode: (e.target as HTMLSelectElement).value as EnvRule['changeMode'] })}

@@ -2,6 +2,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import type { ChatItem, Conversation, HistoryEntry, HistoryKind, HistoryStatus } from '../../../shared/desktop-api';
+import { ModalSizer } from '../../components/ModalSizer';
 import { Icon } from '../../icons';
 import { errText } from '../bridge';
 import type { DeskApp } from '../ctx';
@@ -36,6 +37,7 @@ export function WvDialog(props: { title: string; icon?: string; iconColor?: stri
         </div>
         <div class="modal-body">{props.children}</div>
         {props.foot && <div class="modal-foot">{props.foot}</div>}
+        <ModalSizer id={props.wide ? 'wv:wide' : `wv:${props.title}`} />
       </div>
     </div>
   );

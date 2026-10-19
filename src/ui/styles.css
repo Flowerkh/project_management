@@ -321,12 +321,23 @@ button.stat:hover { border-color: var(--acc-line); }
 
 /* ------------------------------------------------------------ 팝업·팝오버 */
 .scrim { position: fixed; inset: 0; background: rgba(31, 41, 51, 0.35); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; }
-.modal { width: min(720px, calc(100vw - 40px)); max-height: calc(100vh - 120px); overflow: auto; background: #fff; border: 1px solid #bcc5cf; border-radius: 12px; box-shadow: 0 24px 56px rgba(31, 41, 51, 0.3); display: flex; flex-direction: column; }
+.modal { position: relative; width: min(720px, calc(100vw - 40px)); max-height: calc(100vh - 120px); overflow: hidden; background: #fff; border: 1px solid #bcc5cf; border-radius: 12px; box-shadow: 0 24px 56px rgba(31, 41, 51, 0.3); display: flex; flex-direction: column; }
 .modal.sm { width: min(460px, calc(100vw - 40px)); }
 .modal-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 12px 20px; border-bottom: 1px solid var(--line); }
 .modal-head h2 { margin: 0; font-size: 17px; font-weight: 700; }
 .modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
 .modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surf); border-radius: 0 0 12px 12px; }
+/* 머리·바닥은 늘 보이고 본문만 스크롤한다 (크기를 키우면 본문이 늘어남) */
+.modal > .modal-head, .modal > .modal-foot { flex: none; }
+.modal > .modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.modal > .modal-body > * { flex-shrink: 0; }
+/* 크기 조절 손잡이 (ModalSizer): 오른쪽 아래 모서리·아래 가장자리 */
+.rz { display: contents; }
+.rz-s { position: absolute; left: 14px; right: 20px; bottom: 0; height: 5px; cursor: ns-resize; z-index: 3; touch-action: none; }
+.rz-se { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 3px 3px 0; color: #8996a3; cursor: nwse-resize; z-index: 4; touch-action: none; }
+.rz-se:hover { color: var(--acc); }
+body.rz-drag-xy, body.rz-drag-xy * { cursor: nwse-resize !important; user-select: none; }
+body.rz-drag-y, body.rz-drag-y * { cursor: ns-resize !important; user-select: none; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 13px; font-weight: 600; }
 .field .help { font-size: 12px; color: var(--muted); line-height: 1.5; }

@@ -2,6 +2,7 @@
 // DB 연결 자체(주소·계정·비밀번호)는 DB 섹션에서 추가·수정할 때 바로 저장한다.
 import { useEffect, useState } from 'preact/hooks';
 import type { ProjectSettings } from '../../shared/desktop-api';
+import { ModalSizer } from '../components/ModalSizer';
 import { Icon, Spinner } from '../icons';
 import { errText } from './bridge';
 import { useDesk } from './ctx';
@@ -107,6 +108,7 @@ export function ProjectDialog(props: { onClose: () => void }) {
             저장
           </button>
         </div>
+        <ModalSizer id="project" minWidth={560} />
       </div>
     </div>
   );

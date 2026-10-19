@@ -4,6 +4,7 @@ import { App, type Initial } from './app';
 import { installDeskMock, MOCK_ROOT } from './desktop/mock/index';
 import { makeMock } from './mock';
 import type { Target } from './model';
+import { installOverflowTitles } from './overflowTitle';
 import { newRunState } from './screens/Running';
 import './styles.css';
 
@@ -87,4 +88,5 @@ function initialFromUrl(): Initial {
 }
 
 const root = document.getElementById('app');
+installOverflowTitles();
 if (root) render(<App init={initialFromUrl()} />, root);

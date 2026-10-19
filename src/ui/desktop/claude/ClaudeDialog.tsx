@@ -3,6 +3,7 @@
 // API 키는 저장할 때만 보내고 화면에 다시 보여 주지 않는다(메인 프로세스가 Windows 사용자 계정 기준(DPAPI)으로 암호화해 보관).
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AuthMode, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../../shared/desktop-api';
+import { ModalSizer } from '../../components/ModalSizer';
 import { Icon, Spinner } from '../../icons';
 import { errText } from '../bridge';
 import { useDesk } from '../ctx';
@@ -656,6 +657,7 @@ export function ClaudeDialog(props: { onClose: () => void }) {
             </button>
           )}
         </div>
+        <ModalSizer id="claude" />
       </div>
     </div>
   );

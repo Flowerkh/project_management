@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { DEFAULT_EXCLUDE_DIRS } from '../../engine/files';
 import { Icon } from '../icons';
+import { ModalSizer } from './ModalSizer';
 
 export interface Settings {
   exclude: string[];
@@ -18,8 +19,10 @@ function useEsc(onClose: () => void) {
   }, [onClose]);
 }
 
-export function Modal(props: { title: ComponentChildren; icon?: string; onClose: () => void; children: ComponentChildren; foot?: ComponentChildren; small?: boolean }) {
+export function Modal(props: { title: ComponentChildren; icon?: string; onClose: () => void; children: ComponentChildren; foot?: ComponentChildren; small?: boolean; sizeId?: string }) {
   useEsc(props.onClose);
+  // 작은 확인 창은 크기 조절 없이
+  const sizeId = props.small ? null : (props.sizeId ?? `modal:${typeof props.title === 'string' ? props.title : 'dialog'}`);
   return (
     <div class="scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class={`modal${props.small ? ' sm' : ''}`} role="dialog" aria-modal="true">
@@ -32,6 +35,7 @@ export function Modal(props: { title: ComponentChildren; icon?: string; onClose:
         </div>
         <div class="modal-body">{props.children}</div>
         {props.foot && <div class="modal-foot">{props.foot}</div>}
+        {sizeId && <ModalSizer id={sizeId} />}
       </div>
     </div>
   );

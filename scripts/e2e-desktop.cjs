@@ -104,6 +104,77 @@ FLUSH PRIVILEGES;`;
   fs.writeFileSync(path.join(work, 'scenario.json'), JSON.stringify(scenario, null, 1));
 }
 
+/**
+ * POP-04 표시 점검: 환경별 규칙의 선택 상자·머리글이 잘리지 않고, 모서리를 끌면 크기가 바뀌어 기억되며,
+ * 줄인 창에서 말줄임으로 잘린 글자에 마우스를 올리면 전체 글자가 툴팁(title)으로 붙고, 두 번 누르면 원래 크기로 돌아간다.
+ */
+async function checkDialogFit(win, shot) {
+  const dlg = '[role="dialog"][aria-label="프로젝트 연결"]';
+  const fit = await win.evaluate((s) => {
+    const d = document.querySelector(s);
+    const cv = document.createElement('canvas').getContext('2d');
+    const clipped = [...d.querySelectorAll('.db-rules select')].filter((el) => {
+      const cs = getComputedStyle(el);
+      cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      return cv.measureText(el.options[el.selectedIndex].text).width > room + 0.5;
+    }).length;
+    const th = [...d.querySelectorAll('.db-rules th')].filter((el) => el.scrollWidth > el.clientWidth + 1).length;
+    const r = d.getBoundingClientRect();
+    return { clipped, th, w: r.width, h: r.height };
+  }, dlg);
+  if (fit.clipped || fit.th) throw new Error(`환경별 규칙이 잘림: ${JSON.stringify(fit)}`);
+  const size = () => win.evaluate((s) => {
+    const r = document.querySelector(s).getBoundingClientRect();
+    return { w: r.width, h: r.height, saved: localStorage.getItem('pa.modalSize.project') };
+  }, dlg);
+  const grip = win.locator(`${dlg} .rz-se`);
+  const g = await grip.boundingBox();
+  await win.mouse.move(g.x + 9, g.y + 9);
+  await win.mouse.down();
+  await win.mouse.move(g.x + 9 - 160, g.y + 9 - 40, { steps: 5 });
+  await win.mouse.up();
+  const mid = await size();
+  // 가운데 정렬이라 가로는 양쪽으로 줄어든다 (160 끌면 320). 좁으면 형상관리·DB가 위아래로 바뀐다
+  if (Math.abs(mid.w - (fit.w - 320)) > 3 || Math.abs(mid.h - (fit.h - 40)) > 3 || !mid.saved) throw new Error(`크기 조절: ${JSON.stringify({ fit, mid })}`);
+  const oneCol = await win.evaluate((s) => getComputedStyle(document.querySelector(`${s} .pc-body`)).gridTemplateColumns.split(' ').length === 1, dlg);
+  if (!oneCol) throw new Error('좁은 창에서 한 단으로 바뀌지 않음');
+  await shot('pop04-narrow');
+  // 가장 작게 (프로젝트 연결은 최소 너비 560)
+  const g2 = await grip.boundingBox();
+  await win.mouse.move(g2.x + 9, g2.y + 9);
+  await win.mouse.down();
+  await win.mouse.move(g2.x + 9 - 300, g2.y + 9, { steps: 5 });
+  await win.mouse.up();
+  const small = await size();
+  if (Math.abs(small.w - 560) > 3) throw new Error(`최소 너비: ${JSON.stringify(small)}`);
+  const hScroll = await win.evaluate((s) => { const b = document.querySelector(`${s} .pc-body`); return b.scrollWidth > b.clientWidth + 1; }, dlg);
+  if (hScroll) throw new Error('최소 너비에서 가로 스크롤이 생김');
+  // 말줄임으로 잘린 글자(점검용으로 하나 넣음)에 마우스를 올리면 전체 글자가 title로 붙는다
+  const t = await win.evaluate((s) => {
+    const el = document.createElement('div');
+    el.className = 'ellipsis';
+    el.style.width = '140px';
+    el.setAttribute('data-e2e-trunc', '');
+    el.textContent = '말줄임 점검용 긴 글자 · 마우스를 올리면 전체 글자가 툴팁으로 보여야 합니다';
+    document.querySelector(`${s} .pc-col`).prepend(el);
+    const r = el.getBoundingClientRect();
+    return { x: r.x + 10, y: r.y + r.height / 2 };
+  }, dlg);
+  await win.mouse.move(t.x, t.y);
+  const tip = await win.evaluate(() => {
+    const el = document.querySelector('[data-e2e-trunc]');
+    const out = { title: el.getAttribute('title'), auto: el.hasAttribute('data-ovt'), text: el.innerText.replace(/\s+/g, ' ').trim() };
+    el.remove();
+    return out;
+  });
+  if (!tip.auto || tip.title !== tip.text) throw new Error(`잘린 글자 툴팁: ${JSON.stringify(tip)}`);
+  await shot('pop04-small');
+  await grip.dblclick();
+  const back = await size();
+  if (Math.abs(back.w - fit.w) > 2 || Math.abs(back.h - fit.h) > 2 || back.saved) throw new Error(`원래 크기로: ${JSON.stringify({ fit, back })}`);
+}
+
 async function main() {
   fs.mkdirSync(work, { recursive: true });
   prepare();
@@ -193,6 +264,7 @@ async function main() {
     await dlg.waitFor({ state: 'detached', timeout: 10000 });
     await sleep(300);
     await shot('pop04');
+    await checkDialogFit(win, shot);
     await win.locator('[role="dialog"][aria-label="프로젝트 연결"] button:has-text("저장")').last().click();
     await win.waitForSelector('[role="dialog"][aria-label="프로젝트 연결"]', { state: 'detached', timeout: 10000 });
   });

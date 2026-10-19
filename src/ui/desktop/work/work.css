@@ -220,7 +220,7 @@
 .wv-detect { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--acc-line); border-radius: 8px; background: var(--acc-bg); min-width: 0; }
 .wv-detect.none { border-color: var(--line); background: var(--surf); }
 .wv-detect.warn { border-color: #f0d48a; background: #fffaf0; }
-.wv-detect .nm { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.wv-detect .nm { font-size: 13.5px; font-weight: 700; color: var(--ink); white-space: nowrap; flex: none; }
 .wv-detect .d { font-size: 12.5px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .wv-detect .r { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; flex: none; }
 .wv-detect .tag { height: 20px; font-size: 11px; }
