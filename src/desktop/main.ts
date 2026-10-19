@@ -259,15 +259,84 @@ function registerAppChannels(): void {
 
 // ------------------------------------------------------------------ 시작·종료
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
+declare const __PA_BUILD__: string | undefined;
+/** 빌드 시각 (scripts/build-desktop.mjs가 넣음). 앱을 연 채로 새로 빌드해 실행했을 때와 소스가 빌드보다 새로울 때 알아보는 데 쓴다 */
+const BUILD_ID = typeof __PA_BUILD__ === 'string' ? __PA_BUILD__ : 'dev';
+/** 이미 실행 중이어서 이 프로세스는 바로 끝낼 때의 종료 코드 (scripts/start-desktop.mjs가 알아보고 안내) */
+const ALREADY_RUNNING_EXIT = 3;
+
+/** 두 번째로 실행한 앱이 열려 있는 앱에 넘기는 정보 */
+interface SecondInstanceData {
+  build?: string;
+  exec?: string;
+  args?: string[];
+}
+
+let askingRestart = false;
+
+/** 열려 있는 앱보다 다른(새로 빌드한) 앱을 실행하면: 다시 시작해 그 버전으로 바꿀지 묻는다 */
+async function offerRestart(d: SecondInstanceData): Promise<void> {
+  if (askingRestart || !d.build || d.build === BUILD_ID) return;
+  askingRestart = true;
+  try {
+    const opts = {
+      type: 'question' as const,
+      buttons: ['다시 시작', '나중에'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: '새 버전',
+      message: '새로 빌드한 버전이 있습니다. 지금 다시 시작해서 새 버전으로 바꿀까요?',
+      detail: '열려 있는 창을 닫고 새 버전으로 다시 엽니다. 진행 중인 Claude 응답은 멈춥니다.',
+    };
+    const w = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const r = w ? await dialog.showMessageBox(w, opts) : await dialog.showMessageBox(opts);
+    if (r.response !== 0) return;
+    app.relaunch(d.exec ? { execPath: d.exec, args: d.args ?? [] } : undefined);
+    app.quit();
+  } finally {
+    askingRestart = false;
+  }
+}
+
+/** 저장소에서 바로 실행했는데(npx electron .) 받은 소스가 이 빌드보다 새로우면 알려 준다 */
+async function warnIfStale(): Promise<void> {
+  const built = Date.parse(BUILD_ID);
+  const src = path.resolve(here, '..', 'src');
+  if (app.isPackaged || !Number.isFinite(built) || !fs.existsSync(src)) return;
+  let newest = 0;
+  const rec = async (dir: string): Promise<void> => {
+    for (const e of await fsp.readdir(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) await rec(p);
+      else newest = Math.max(newest, (await fsp.stat(p)).mtimeMs);
+    }
+  };
+  await rec(src).catch(() => undefined);
+  if (newest <= built + 1000) return;
+  const opts = {
+    type: 'warning' as const,
+    buttons: ['확인'],
+    noLink: true,
+    title: '빌드가 예전 것입니다',
+    message: '받은 소스가 지금 연 앱보다 새롭습니다',
+    detail: '새 코드가 아직 빌드되지 않아 바뀐 내용이 보이지 않습니다. 앱을 닫고 저장소 폴더에서 npm start 로 실행하면 새로 빌드해서 엽니다.',
+  };
+  const w = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  await (w ? dialog.showMessageBox(w, opts) : dialog.showMessageBox(opts));
+}
+
+const instance: SecondInstanceData = { build: BUILD_ID, exec: process.execPath, args: process.argv.slice(1) };
+if (!app.requestSingleInstanceLock(instance as Record<string, unknown>)) {
+  app.exit(ALREADY_RUNNING_EXIT);
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, _argv, _cwd, data) => {
     const w = mainWindow;
     if (w) {
       if (w.isMinimized()) w.restore();
       w.focus();
     }
+    void offerRestart((data ?? {}) as SecondInstanceData);
   });
 
   app.whenReady().then(() => {
@@ -284,6 +353,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+    void warnIfStale();
   });
 
   let quitting = false;

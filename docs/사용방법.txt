@@ -26,6 +26,8 @@ v0.4부터 데스크톱 앱에서 Claude 연동, 형상관리(Git·SVN)·작업 
     npm start          ← 패키지 설치(처음이거나 바뀌었을 때만, 처음엔 몇 분) → 빌드 → 실행
     npm run package    ← 실행 파일 zip 만들기 (release\ProjectAnalyzer-…-win.zip, 몇 분 걸림)
   * 새 코드를 받을 때: git pull 뒤 npm start
+    앱을 켜 둔 채 실행하면 열린 앱이 새 버전으로 [다시 시작]할지 묻습니다.
+    npx electron . 은 다시 빌드하지 않으므로 새 코드가 반영되지 않습니다(경고가 뜸).
   * desktop 폴더 안에서 npm start 를 해도 됩니다. node scripts\… 명령은 저장소 폴더에서 실행해야 합니다.
 
 

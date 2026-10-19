@@ -142,5 +142,13 @@ const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(electronExe(), [desktop, ...electronArgs], { cwd: desktop, env, stdio: 'inherit' });
 child.on('error', (e) => fail(`앱을 실행하지 못했습니다: ${e.message}`));
-child.on('close', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+child.on('close', (code, signal) => {
+  // 3: 앱이 이미 열려 있어 그 창을 앞으로 가져오고 끝남 (src/desktop/main.ts)
+  if (code === 3) {
+    console.log('\n  앱이 이미 열려 있어 그 창을 앞으로 가져왔습니다. 방금 빌드한 새 버전은 앱을 다시 시작해야 반영됩니다.');
+    console.log('  앱 창에 [다시 시작] 안내가 뜨면 누르고, 안 뜨면 앱 창을 닫은 뒤 npm start 를 다시 실행하세요.\n');
+    process.exit(0);
+  }
+  process.exit(code ?? (signal ? 1 : 0));
+});
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => !child.killed && child.kill(sig));

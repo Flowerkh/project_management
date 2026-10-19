@@ -41,6 +41,8 @@ await Promise.all([
     external,
     // 묶은 CommonJS 코드의 require(…)가 ESM 안에서도 동작하게
     banner: { js: "import { createRequire as __paCreateRequire } from 'node:module';\nconst require = __paCreateRequire(import.meta.url);" },
+    // 빌드 시각: 앱을 연 채로 새로 빌드해 실행하면 열린 앱이 다시 시작할지 묻고, 소스가 빌드보다 새로우면 알린다 (main.ts)
+    define: { __PA_BUILD__: JSON.stringify(new Date().toISOString()) },
     minify: !dev,
     keepNames: true,
     sourcemap: false,

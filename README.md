@@ -46,6 +46,7 @@ npm start
 
 - `npm start` 하나로 패키지 설치 → 빌드 → 실행까지 합니다. 설치는 처음이거나 패키지 목록(package-lock.json)이 바뀌었을 때만 하고, 처음에는 몇 분 걸립니다.
 - 저장소 폴더와 `desktop` 폴더 어디서 실행해도 됩니다. 새 코드를 받을 때는 `git pull` 뒤 `npm start`.
+- 앱을 켜 둔 채 `npm start`를 하면 열린 앱이 새 버전으로 다시 시작할지 묻습니다. `npx electron .`은 다시 빌드하지 않으므로 받은 소스가 더 새로우면 경고만 띄웁니다.
 - 실행 파일(zip) 만들기: `npm run package` → `release\ProjectAnalyzer-<버전>-win.zip` (몇 분 걸림. 압축을 풀고 `ProjectAnalyzer.exe`)
 - 브라우저용 HTML 한 파일: `node scripts/build.mjs` → `dist\web\project-analyzer.html` (Claude·형상관리·DB 기능은 데스크톱 앱에서만)
 - `node scripts\…` 명령은 저장소 폴더에서 실행합니다. `desktop` 폴더 안에서는 스크립트를 찾지 못합니다.
