@@ -154,7 +154,7 @@ export function EvidenceLine(props: { items: Evidence[]; prefix?: string; max?: 
         return (
           <span key={i}>
             {i > 0 && ' · '}
-            {e.text ? `${e.text.length > 48 ? `${e.text.slice(0, 48)}…` : e.text} ` : ''}
+            {e.text ? e.text.length > 48 ? <span title={e.text}>{`${e.text.slice(0, 48)}… `}</span> : `${e.text} ` : ''}
             <a href="#" onClick={(ev) => { ev.preventDefault(); openFile(e.file, e.line); }}>
               ({f?.name ?? e.file}:{e.line})
             </a>
