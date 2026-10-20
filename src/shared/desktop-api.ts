@@ -300,6 +300,8 @@ export interface HistoryEntry {
   vcs?: VcsInfo['kind'];
   /** (코드) 변경을 만든 작업 사본 */
   workId?: string;
+  /** (코드) 변경을 만든 AI (없으면 claude — 예전 기록). 커밋 표시 'Gemini가 작성한 변경' */
+  ai?: AiProvider;
   workPath?: string;
   /** (코드) 커밋 메시지 첫 줄 */
   message?: string;
@@ -313,6 +315,67 @@ export interface RevertResult {
   /** 그 뒤로 같은 파일이 또 바뀌어 자동으로 못 되돌림 (MSG-40) */
   blocked?: string[];
   error?: string;
+}
+
+// ------------------------------------------------------------------ AI 공통 (Claude · Gemini · ChatGPT)
+
+export type AiProvider = 'claude' | 'gemini' | 'openai';
+export const AI_PROVIDERS: AiProvider[] = ['claude', 'gemini', 'openai'];
+/** 화면에 보이는 이름 */
+export const AI_LABEL: Record<AiProvider, string> = { claude: 'Claude', gemini: 'Gemini', openai: 'ChatGPT' };
+/** 보내는 곳 (대화창 아래 안내 '…가 OpenAI로 전송됨') */
+export const AI_VENDOR: Record<AiProvider, string> = { claude: 'Anthropic', gemini: 'Google', openai: 'OpenAI' };
+
+export interface AiSettings {
+  /** 새 대화의 기본 AI */
+  defaultProvider: AiProvider;
+  /** 모든 AI가 실행할 수 있는 셸 명령 (앞부분 일치, 실행할 때마다 확인 MSG-24). 비면 셸 명령 금지 */
+  shellAllow: string[];
+}
+
+export type GeminiAuthMode = 'apikey' | 'vertex';
+
+/** Gemini 연결 (앱이 Gemini API에 바로 연결) */
+export interface GeminiConfig {
+  enabled: boolean;
+  consentAt?: string;
+  /** apikey Google AI Studio 키 / vertex 회사 Google Cloud(PC의 gcloud 로그인) */
+  authMode: GeminiAuthMode;
+  hasApiKey: boolean;
+  vertex?: { project: string; location: string };
+  /** 새 대화의 기본 모델 (gemini.models의 value 또는 직접 입력) */
+  model?: string;
+  /** 회사 프록시 */
+  proxy?: string;
+}
+
+export interface GeminiConfigInput extends Omit<GeminiConfig, 'hasApiKey'> {
+  /** 저장할 때만. 빈 문자열이면 지움 */
+  apiKey?: string;
+}
+
+export type OpenAiAuthMode = 'chatgpt' | 'apikey' | 'azure';
+
+/** ChatGPT 연결 (PC의 Codex CLI) */
+export interface OpenAiConfig {
+  enabled: boolean;
+  consentAt?: string;
+  /** chatgpt ChatGPT 계정 로그인(구독) / apikey OpenAI API 키 / azure 회사 클라우드(Azure OpenAI) */
+  authMode: OpenAiAuthMode;
+  hasApiKey: boolean;
+  /** endpoint https://{리소스}.openai.azure.com · deployment 배포 이름(=모델). 키가 없으면 PC의 Azure 로그인(az) 토큰 */
+  azure?: { endpoint: string; deployment: string; hasKey: boolean };
+  /** 직접 지정한 codex 실행 파일 경로 (비우면 자동 탐색) */
+  cliPath?: string;
+  model?: string;
+  proxy?: string;
+}
+
+export interface OpenAiConfigInput extends Omit<OpenAiConfig, 'hasApiKey' | 'azure'> {
+  /** 저장할 때만. 빈 문자열이면 지움 */
+  apiKey?: string;
+  /** key: 저장할 때만. 빈 문자열이면 지움 */
+  azure?: { endpoint: string; deployment: string; key?: string };
 }
 
 // ------------------------------------------------------------------ Claude
@@ -332,15 +395,17 @@ export interface ClaudeConfig {
   model?: string;
   /** 회사 프록시 (HTTPS_PROXY) */
   proxy?: string;
-  /** Claude가 실행할 수 있는 셸 명령 (앞부분 일치, 실행할 때마다 확인 MSG-24). 비면 셸 명령 금지 */
+  /** AI가 실행할 수 있는 셸 명령 (AI 공통 설정 ai.settings의 shellAllow와 같은 값) */
   shellAllow: string[];
   /** AI 요약 (F-10): 결과 요약·역할 문장을 Claude로 다듬기. 기본 끔 */
   aiSummary: boolean;
 }
 
-export interface ClaudeConfigInput extends Omit<ClaudeConfig, 'hasApiKey'> {
+export interface ClaudeConfigInput extends Omit<ClaudeConfig, 'hasApiKey' | 'shellAllow'> {
   /** 저장할 때만. 빈 문자열이면 지움 */
   apiKey?: string;
+  /** 주면 AI 공통의 셸 허용 목록도 바꾼다 (없으면 그대로) */
+  shellAllow?: string[];
 }
 
 export interface ClaudeStatus {
@@ -356,8 +421,11 @@ export interface ClaudeStatus {
   authMs?: number;
   /** 문제의 종류 (state가 login·offline·missing일 때. 결제 문제 MSG-30·사용 한도 MSG-23 구분용) */
   code?: ClaudeErrorCode;
-  /** (POP-03 ② 연결 확인) 항목별 결과: CLI 설치 → 인터넷 → 인증. ok null = 확인하지 않음(앞 단계 실패·건너뜀) */
-  checks?: { cli: ClaudeCheck; network: ClaudeCheck; auth: ClaudeCheck };
+  /**
+   * (POP-03 ② 연결 확인) 항목별 결과: CLI 설치 → 인터넷 → 인증 (→ 모델). ok null = 확인하지 않음(앞 단계 실패·건너뜀).
+   * Gemini는 CLI가 없고(앱이 바로 연결) 모델 확인이 있다
+   */
+  checks?: { cli?: ClaudeCheck; network: ClaudeCheck; auth: ClaudeCheck; model?: ClaudeCheck };
 }
 
 /** Claude Code가 알려 준, 이 PC·계정에서 쓸 수 있는 모델 (claude.models) */
@@ -407,7 +475,8 @@ export type ClaudeErrorCode = 'auth' | 'limit' | 'billing' | 'offline' | 'missin
 /** 대화 시작 때 붙이는 맥락 (선택한 화면·테이블·메뉴·배치·파일과 시스템 요약) */
 export interface ChatContext {
   title: string;
-  chips: { kind: 'screen' | 'table' | 'menu' | 'batch' | 'file' | 'flow' | 'summary'; label: string; text: string }[];
+  /** conversation: 다른 AI와 나눈 이전 대화의 질문·답변 글 (AI를 바꿔 새 대화를 시작할 때) */
+  chips: { kind: 'screen' | 'table' | 'menu' | 'batch' | 'file' | 'flow' | 'summary' | 'conversation'; label: string; text: string }[];
 }
 
 export type ChatItem =
@@ -448,6 +517,8 @@ export interface PendingRequest {
 
 export interface Conversation {
   id: string;
+  /** 이 대화의 AI (없으면 claude — 예전 대화). 대화 중에는 바뀌지 않음 (다른 AI는 새 대화로) */
+  provider?: AiProvider;
   /** 프로젝트 폴더. ZIP·결과 파일로 연 프로젝트는 null (소스 없이 분석 결과로만 대화) */
   root: string | null;
   /** issue 이슈 처리(작업 사본에서) / new 새 프로젝트(고른 빈 폴더에서) */
@@ -470,6 +541,7 @@ export interface Conversation {
 
 export interface ConversationSummary {
   id: string;
+  provider?: AiProvider;
   kind: Conversation['kind'];
   title: string;
   updatedAt: string;
@@ -485,8 +557,12 @@ export interface ClaudeStartOptions {
   newProject?: boolean;
   /** 참고할 분석 결과 요약 (새 프로젝트, '같은 구조로') */
   references?: { name: string; text: string }[];
-  /** 이 대화의 모델 ('' = Claude Code 기본값). 없으면 Claude 연결의 기본 모델 */
+  /** 이 대화의 모델 ('' = 그 AI의 기본값). 없으면 그 AI 연결의 기본 모델 */
   model?: string;
+  /** 이 대화의 AI (없으면 AI 공통의 기본 AI) */
+  provider?: AiProvider;
+  /** 다른 AI로 새 대화: 이 대화의 질문·답변 글을 맥락으로 붙인다 */
+  carryFrom?: string;
 }
 
 export interface DesktopApi {
@@ -547,6 +623,22 @@ export interface DesktopApi {
   /** claude 실행 파일 직접 지정 ([경로 지정]). 고른 경로, 취소하면 null */
   'claude.pickCli'(): string | null;
 
+  /** AI 공통: 새 대화의 기본 AI·셸 허용 목록 */
+  'ai.settings.get'(): AiSettings;
+  'ai.settings.set'(patch: Partial<AiSettings>): AiSettings;
+  /** AI별 연결 상태 (claude는 claude.status와 같음) */
+  'ai.status'(provider: AiProvider, recheck?: boolean): ClaudeStatus;
+  /** AI별 모델 목록·지금 계정 (claude는 claude.models와 같음) */
+  'ai.models'(provider: AiProvider, refresh?: boolean): ClaudeModelList;
+  'gemini.config.get'(): GeminiConfig;
+  'gemini.config.set'(c: GeminiConfigInput): GeminiConfig;
+  'openai.config.get'(): OpenAiConfig;
+  'openai.config.set'(c: OpenAiConfigInput): OpenAiConfig;
+  /** [터미널에서 로그인]: Windows에서 새 명령 창으로 `codex login`(브라우저 로그인)을 띄운다. 다른 OS는 false */
+  'openai.openLogin'(): boolean;
+  /** codex 실행 파일 직접 지정 ([경로 지정]). 고른 경로, 취소하면 null */
+  'openai.pickCli'(): string | null;
+
   'db.list'(root: string): DbConnection[];
   'db.save'(root: string, conn: DbConnectionInput): DbConnection;
   'db.remove'(root: string, id: string): void;
@@ -572,6 +664,8 @@ export type DesktopEvent =
   | { type: 'claude.item'; conversationId: string; item: ChatItem }
   | { type: 'claude.state'; conversationId: string; running: boolean; mode: ChatMode; workId?: string; pending?: PendingRequest | null; model?: string; activeModel?: string }
   | { type: 'claude.status'; status: ClaudeStatus }
+  /** Gemini·ChatGPT 연결 상태 (Claude는 claude.status) */
+  | { type: 'ai.status'; provider: AiProvider; status: ClaudeStatus }
   | { type: 'work.progress'; root: string; done: number; total: number; message?: string }
   | { type: 'history.added'; root: string; entry: HistoryEntry }
   /** 기록 갱신 (커밋·푸시 결과, 진행 기록 추가, 되돌림 표시) */

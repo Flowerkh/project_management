@@ -2,13 +2,14 @@
 import { createContext } from 'preact';
 import { useContext } from 'preact/hooks';
 import type { AnalysisResult } from '../../engine/types';
-import type { ChatContext, ClaudeConfig, ClaudeStatus } from '../../shared/desktop-api';
+import type { AiProvider, AiSettings, ChatContext, ClaudeConfig, ClaudeStatus, GeminiConfig, OpenAiConfig } from '../../shared/desktop-api';
+import type { SettingsPageId } from '../components/Dialogs';
 import type { Model, Target } from '../model';
 import type { Desk } from './bridge';
 
-/** Claude 대화 패널을 여는 요청 */
+/** AI 대화 패널을 여는 요청 */
 export interface ChatRequest {
-  /** 새 대화에 붙일 맥락 (화면·테이블·메뉴·배치 상세의 [Claude에게 묻기]) */
+  /** 새 대화에 붙일 맥락 (화면·테이블·메뉴·배치 상세의 [AI에게 묻기]) */
   context?: ChatContext;
   /** 기존 대화 열기 */
   conversationId?: string;
@@ -36,11 +37,22 @@ export interface DeskApp {
   model: Model | null;
   result: AnalysisResult | null;
   target: Target;
-  /** Claude 연결 상태 (상단 Claude 버튼의 점) */
+  /** Claude 연결 상태 (ai.status.claude와 같음) */
   claude: ClaudeStatus | null;
   claudeConfig: ClaudeConfig | null;
   /** 상태 다시 읽기. recheck면 CLI·인증을 다시 확인 */
   refreshClaude(recheck?: boolean): Promise<void>;
+  /** AI 공통 설정·AI별 연결 상태·Gemini·ChatGPT 설정 (비밀 값 없음) */
+  ai: {
+    settings: AiSettings | null;
+    status: Partial<Record<AiProvider, ClaudeStatus | null>>;
+    gemini: GeminiConfig | null;
+    openai: OpenAiConfig | null;
+  };
+  /** 그 AI(없으면 모두)의 설정·상태 다시 읽기. recheck면 연결 확인까지 */
+  refreshAi(provider?: AiProvider, recheck?: boolean): Promise<void>;
+  /** 설정 창을 그 페이지로 연다 (AI 공통·Claude·Gemini·ChatGPT) */
+  openSettings(page: SettingsPageId): void;
   chat: ChatRequest | null;
   openChat(req?: Omit<ChatRequest, 'nonce'>): void;
   closeChat(): void;
@@ -50,8 +62,8 @@ export interface DeskApp {
   openHistory(entryId?: string): void;
   /** 결과 요약으로 돌아가기 */
   openSummary(): void;
-  /** POP-03 Claude 연결 / POP-04 프로젝트 연결 */
-  openModal(kind: 'claude' | 'project'): void;
+  /** POP-03 AI 연결(그 AI의 설정 페이지) / POP-04 프로젝트 연결 */
+  openModal(kind: AiProvider | 'project'): void;
   /** 적용·되돌리기 뒤 다시 분석 (확인 창 없이). 끝나면 전후 결과와 걸린 시간 */
   reanalyze(): Promise<ReanalyzeResult>;
   /** 프로젝트 기준 상대 경로로 소스 뷰어 열기. 분석 결과에 없는 파일이면 false */

@@ -23,6 +23,11 @@ export interface Host {
    * Electron은 PC의 프록시 설정(시스템·PAC)을 따르고, proxy를 주면 그 프록시로 확인한다.
    */
   netCheck?(url: string, opts?: { timeoutMs?: number; proxy?: string }): Promise<NetCheckResult>;
+  /**
+   * AI 서버 요청 (Gemini). Electron은 Chromium 네트워크(PC 프록시·PAC·Windows 인증서 저장소)를 쓰고,
+   * proxy를 주면 그 프록시로. 없으면 Node fetch
+   */
+  fetch?(url: string, init: RequestInit & { proxy?: string }): Promise<Response>;
 }
 
 export interface NetCheckResult {
@@ -81,6 +86,12 @@ export function testHost(
       const a = answers.net;
       if (typeof a === 'function') return a(url, opts);
       return a ?? { ok: true, status: 200, ms: 1 };
+    },
+    // 시험에서는 이 PC 안의 가짜 서버(127.0.0.1·localhost)에만 요청한다 (실제 AI 서버·계정을 쓰지 않음)
+    async fetch(url, init) {
+      if (!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url)) throw new Error(`시험에서는 바깥 주소에 요청하지 않습니다: ${url.replace(/\?.*$/, '')}`);
+      const { proxy: _proxy, ...rest } = init;
+      return fetch(url, rest);
     },
   };
 }

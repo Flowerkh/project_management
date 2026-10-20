@@ -249,13 +249,13 @@ export function ProjectDbSection(props: ProjectSectionProps) {
           </div>
         ) : (
           <div class="db-empty">
-            등록한 DB가 없습니다. [DB 추가]로 개발·QA·운영 DB를 등록하면 Claude가 SELECT로 조회하고, SELECT 외 쿼리는 확인한 뒤 실행할 수 있습니다.
+            등록한 DB가 없습니다. [DB 추가]로 개발·QA·운영 DB를 등록하면 AI가 SELECT로 조회하고, SELECT 외 쿼리는 확인한 뒤 실행할 수 있습니다.
           </div>
         )}
         {error && <div class="err-text">{error}</div>}
         <span class="db-note">
           <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
-          Claude 조회는 읽기 전용 세션 · 조회 전용 계정을 넣으면 그 계정으로(권장)
+          AI 조회는 읽기 전용 세션 · 조회 전용 계정을 넣으면 그 계정으로(권장)
         </span>
       </section>
       <div class="db-sep" />
@@ -273,9 +273,9 @@ export function ProjectDbSection(props: ProjectSectionProps) {
           <thead>
             <tr>
               <th>환경</th>
-              <th title="Claude 조회(SELECT): Claude가 이 환경의 DB를 SELECT로 조회하는 방식(바로 실행·매번 확인), 한 번에 가져올 최대 행 수, 시간 제한(초)">Claude 조회(SELECT)</th>
-              <th title="SELECT 외 쿼리: INSERT·UPDATE·DELETE 같은 쿼리는 Claude가 실행하지 못하고 쿼리 카드로 올립니다. [실행]을 누를 때 확인하는 방식(확인 후 실행·DB 이름 입력 후 실행)">SELECT 외 쿼리</th>
-              <th class="c" title="개인정보 가림: 켜면 조회 결과에서 아래 '가림 대상' 컬럼의 값을 ****로 가린 뒤 Claude에 보냅니다">개인정보 가림</th>
+              <th title="AI 조회(SELECT): AI(Claude·Gemini·ChatGPT)가 이 환경의 DB를 SELECT로 조회하는 방식(바로 실행·매번 확인), 한 번에 가져올 최대 행 수, 시간 제한(초)">AI 조회(SELECT)</th>
+              <th title="SELECT 외 쿼리: INSERT·UPDATE·DELETE 같은 쿼리는 AI가 실행하지 못하고 쿼리 카드로 올립니다. [실행]을 누를 때 확인하는 방식(확인 후 실행·DB 이름 입력 후 실행)">SELECT 외 쿼리</th>
+              <th class="c" title="개인정보 가림: 켜면 조회 결과에서 아래 '가림 대상' 컬럼의 값을 ****로 가린 뒤 AI에 보냅니다">개인정보 가림</th>
             </tr>
           </thead>
           <tbody>
@@ -297,7 +297,7 @@ export function ProjectDbSection(props: ProjectSectionProps) {
                       ) : (
                         <select
                           class="db-ghost"
-                          aria-label={`${ENV_LABEL[env]} Claude 조회 방식`}
+                          aria-label={`${ENV_LABEL[env]} AI 조회 방식`}
                           value={r.selectMode}
                           onChange={(e) => setRule(env, { selectMode: (e.target as HTMLSelectElement).value as EnvRule['selectMode'] })}
                         >

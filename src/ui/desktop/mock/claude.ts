@@ -5,12 +5,14 @@
 //   &cstate=off|login|missing|offline  Claude 연결 상태 (상단 점·POP-03·패널 배너)
 //   &phase=new [&nstep=plan|gen|done] [&nfolder=dirty]   SCR-11 새 프로젝트
 import type {
-  ChatContext, ChatItem, ChatMode, ClaudeConfig, ClaudeConfigInput, ClaudeErrorCode, ClaudeModelList, ClaudeStartOptions, ClaudeStatus, Conversation,
+  AiProvider, AiSettings, ChatContext, ChatItem, ChatMode, ClaudeConfig, ClaudeConfigInput, ClaudeErrorCode, ClaudeModelList, ClaudeStartOptions, ClaudeStatus, Conversation,
   ConversationSummary, PendingRequest, QueryCard,
 } from '../../../shared/desktop-api';
+import { AI_LABEL } from '../../../shared/desktop-api';
 import { makeMock } from '../../mock';
 import { buildModel } from '../../model';
 import { buildChatContext } from '../claude/context';
+import { MOCK_DEFAULT_AI, MOCK_GEMINI_MODELS, MOCK_OPENAI_MODELS } from './ai';
 import type { MockHandler, MockKit } from './index';
 
 const P = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
@@ -225,6 +227,7 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
 
   add({
     id: 'c-1',
+    ...(MOCK_DEFAULT_AI !== 'claude' ? { provider: MOCK_DEFAULT_AI } : {}),
     root: kit.root,
     kind: 'issue',
     title: '주문 이력 중복 저장',
@@ -568,7 +571,7 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
     'claude.list': (root: string): ConversationSummary[] =>
       [...convs.values()]
         .filter((c) => c.root === root)
-        .map((c) => ({ id: c.id, kind: c.kind, title: c.title, updatedAt: c.updatedAt, mode: c.mode, items: c.items.length })),
+        .map((c) => ({ id: c.id, ...(c.provider ? { provider: c.provider } : {}), kind: c.kind, title: c.title, updatedAt: c.updatedAt, mode: c.mode, items: c.items.length })),
     'claude.get': (id: string) => {
       const c = convs.get(id);
       if (!c) return null;
@@ -583,15 +586,31 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
     'claude.start': async (root: string | null, opts?: ClaudeStartOptions) => {
       const id = `c-${++seq}`;
       const nowS = now();
+      const provider: AiProvider = opts?.provider ?? (kit.state.aiSettings as AiSettings | undefined)?.defaultProvider ?? 'claude';
+      // 다른 AI로 새 대화: 이전 대화의 질문·답변 글을 맥락 칩으로 (메인과 같은 모양)
+      let context = opts?.context;
+      const from = opts?.carryFrom ? convs.get(opts.carryFrom) : undefined;
+      if (from) {
+        const fromAi = AI_LABEL[from.provider ?? 'claude'];
+        const text = from.items
+          .map((it) => (it.type === 'user' ? `[사용자] ${it.text}` : it.type === 'assistant' ? `[${fromAi}] ${it.text}` : ''))
+          .filter(Boolean)
+          .join('\n\n');
+        const chips = (context ?? from.context)?.chips.filter((c) => c.kind !== 'conversation') ?? [];
+        if (text) chips.push({ kind: 'conversation', label: `이전 대화 (${fromAi})`, text });
+        context = chips.length ? { title: context?.title ?? from.title, chips } : undefined;
+      }
       const c: Conversation = {
         id,
+        ...(provider !== 'claude' ? { provider } : {}),
         root,
         kind: opts?.newProject ? 'new' : 'issue',
-        title: opts?.newProject ? '새 프로젝트' : opts?.context?.title ?? '새 대화',
+        title: opts?.newProject ? '새 프로젝트' : context?.title ?? '새 대화',
         createdAt: nowS,
         updatedAt: nowS,
         mode: 'plan',
-        context: opts?.context,
+        context,
+        ...(opts?.model !== undefined ? { model: opts.model } : {}),
         items: [],
         running: false,
         ...(root && !opts?.newProject ? { workId: 'W1' } : {}),
@@ -638,8 +657,13 @@ export function claudeMocks(kit: MockKit): Record<string, MockHandler> {
       const before = c.model ?? cfg.model ?? '';
       c.model = model;
       if (before !== model) {
-        c.activeModel = MOCK_MODELS.find((m) => m.value === (model || 'default'))?.resolved ?? model;
-        const name = model ? (MOCK_MODELS.find((m) => m.value === model)?.name ?? model) : 'Claude Code 기본값';
+        const others = c.provider === 'gemini' ? MOCK_GEMINI_MODELS : c.provider === 'openai' ? MOCK_OPENAI_MODELS : null;
+        c.activeModel = others ? model || others[0].value : (MOCK_MODELS.find((m) => m.value === (model || 'default'))?.resolved ?? model);
+        const name = others
+          ? (others.find((m) => m.value === model)?.name ?? (model || `${AI_LABEL[c.provider ?? 'claude']} 기본 모델`))
+          : model
+            ? (MOCK_MODELS.find((m) => m.value === model)?.name ?? model)
+            : 'Claude Code 기본값';
         emitItem(c, { id: nid('n'), type: 'notice', text: `모델을 ${name}(으)로 바꿨습니다${c.running ? ' · 다음 응답부터 적용됩니다' : ''}`, at: now() });
       }
       emitState(c);

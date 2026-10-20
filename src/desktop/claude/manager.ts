@@ -1,10 +1,13 @@
-// Claude 대화 관리: 대화마다 Agent SDK query 하나를 스트리밍 입력으로 열어 두고(15분 쉬면 닫음, 다시 보낼 때 resume),
-// SDK 메시지를 화면 항목(ChatItem)으로 바꿔 claude.item·claude.state 이벤트로 보낸다.
+// AI 대화 관리: 대화마다 AI 연결 하나를 스트리밍 입력으로 열어 두고(15분 쉬면 닫음, 다시 보낼 때 이어서),
+// 메시지를 화면 항목(ChatItem)으로 바꿔 claude.item·claude.state 이벤트로 보낸다.
+//   Claude: PC의 Claude Code를 Agent SDK query()로 / Gemini·ChatGPT: ai/engine.ts의 엔진 (같은 모양의 메시지를 흘림)
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { ChatItem, ChatMode, ClaudeStartOptions, Conversation, ConversationSummary, Env, PendingRequest, QueryCard } from '../../shared/desktop-api';
-import { ENV_LABEL } from '../../shared/desktop-api';
+import type { AiProvider, ChatItem, ChatMode, ClaudeStartOptions, Conversation, ConversationSummary, Env, PendingRequest, QueryCard } from '../../shared/desktop-api';
+import { AI_LABEL, ENV_LABEL } from '../../shared/desktop-api';
+import { type AiEngine, EngineError, type EngineMap, type EngineProvider, type RunningQuery, type StatusReport } from '../ai/engine';
+import { getAiSettings, isProvider } from '../ai/settings';
 import { isEmptyDir } from '../fsutil';
 import { host } from '../host';
 import { DesktopError, emit } from '../ipc';
@@ -13,13 +16,13 @@ import { services, type DbSelectAsk } from '../services';
 import { dataDir, newId, nowIso } from '../store';
 import { type ActEntry, applyResult, describeTool, summarize } from './activity';
 import { cleanModel, getStored, type StoredConfig } from './config';
-import { deleteConvFile, exportFileName, listConvs, loadConv, publicConv, saveConv, type StoredConversation, toMarkdown, validId } from './conversations';
+import { carryTranscript, deleteConvFile, exportFileName, listConvs, loadConv, providerOf, publicConv, saveConv, type StoredConversation, toMarkdown, validId } from './conversations';
 import { buildCliEnv, claudeConfigDir } from './env';
 import { type Classified, classifyError } from './errors';
 import { type GuardContext, isPlanFile, MSG_READONLY, permissionDefault, preToolUse, secretDenyRules, SHELL_TOOLS } from './guards';
-import { buildFirstMessage, buildSystemAppend, shortTitle } from './prompt';
+import { buildFirstMessage, buildSystemAppend, MAX_CARRY, shortTitle } from './prompt';
 import type { ModelCatalog } from './models';
-import { createSdkMcpServer, InputQueue, type Options, type Query, type QueryFn, tool, userMessage } from './sdk';
+import { createSdkMcpServer, InputQueue, type Options, type QueryFn, tool, userMessage } from './sdk';
 import { type StatusManager, textOf } from './status';
 import { createDbServer, DB_TOOL_NAMES, makeDbHandlers } from './tools';
 
@@ -38,6 +41,8 @@ export interface ManagerOptions {
   toolFn?: typeof tool;
   /** 모델 이름 (모델을 바꿨다는 안내에 씀) */
   models?: ModelCatalog;
+  /** Claude 말고 다른 AI (Gemini·ChatGPT) */
+  engines?: EngineMap;
 }
 
 class RunError extends Error {
@@ -81,10 +86,10 @@ interface TurnState {
 }
 
 class Session {
-  q: Query | null = null;
+  q: RunningQuery | null = null;
   input: InputQueue | null = null;
   /** 일부러 닫은 query (끝나도 오류로 보지 않음) */
-  closing = new Set<Query>();
+  closing = new Set<RunningQuery>();
   running = false;
   pendings: PendingEntry[] = [];
   turn: TurnState | null = null;
@@ -102,6 +107,13 @@ class Session {
   /** 다음 메시지 때 CLI를 새로 연다 (열린 CLI가 모델 바꾸기를 못 함 · 응답 중에 설정·로그인이 바뀜) */
   reopen = false;
   constructor(public conv: StoredConversation) {}
+  get provider(): AiProvider {
+    return providerOf(this.conv);
+  }
+  /** 보이는 AI 이름 (Claude · Gemini · ChatGPT) */
+  get ai(): string {
+    return AI_LABEL[this.provider];
+  }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -130,6 +142,7 @@ export class ClaudeManager {
   private createServer: typeof createSdkMcpServer;
   private toolFn: typeof tool;
   private models: ModelCatalog | undefined;
+  private engines: EngineMap;
 
   constructor(o: ManagerOptions) {
     this.queryFn = o.queryFn;
@@ -139,15 +152,65 @@ export class ClaudeManager {
     this.createServer = o.createServer ?? createSdkMcpServer;
     this.toolFn = o.toolFn ?? tool;
     this.models = o.models;
+    this.engines = o.engines ?? {};
+  }
+
+  // ---------------------------------------------------------------- AI별
+
+  private engine(p: AiProvider): AiEngine | undefined {
+    return p === 'claude' ? undefined : this.engines[p];
+  }
+
+  private async enabledFor(p: AiProvider): Promise<boolean> {
+    if (p === 'claude') return (await getStored()).enabled;
+    return (await this.engine(p)?.enabled()) ?? false;
+  }
+
+  private offError(p: AiProvider, starting: boolean): DesktopError {
+    const where = p === 'claude' ? 'Claude 연결' : `설정 > AI 연결 > ${AI_LABEL[p]}`;
+    return new DesktopError(`${AI_LABEL[p]} 연동이 꺼져 있습니다. ${where}에서 ${starting ? '켠 뒤 시작해' : '켜'} 주세요.`, 'off');
+  }
+
+  /** 연결 설정의 기본 모델 ('' = 그 AI의 기본값) */
+  private async defaultModel(p: AiProvider): Promise<string> {
+    if (p === 'claude') return (await getStored()).model ?? '';
+    return (await this.engine(p)?.defaultModel()) ?? '';
+  }
+
+  private modelLabel(p: AiProvider, model: string): string {
+    if (p === 'claude') return this.models?.label(model) ?? (model || 'Claude Code 기본값');
+    return this.engine(p)?.models.label(model) ?? (model || `${AI_LABEL[p]} 기본 모델`);
+  }
+
+  /** 대화에서 알게 된 연결 상태를 그 AI의 상태에 알린다 */
+  private report(s: Session, r: StatusReport): void {
+    const p = s.provider;
+    if (p === 'claude') void this.status.report(r).catch(() => undefined);
+    else void this.engine(p)?.status.report(r).catch(() => undefined);
   }
 
   // ---------------------------------------------------------------- 채널
 
   async start(root: string | null, opts: ClaudeStartOptions = {}): Promise<Conversation> {
-    const cfg = await getStored();
-    if (!cfg.enabled) throw new DesktopError('Claude 연동이 꺼져 있습니다. Claude 연결에서 켠 뒤 시작해 주세요.', 'off');
-    // 고른 모델 ('' = Claude Code 기본값). 고르지 않았으면 Claude 연결의 기본 모델을 따른다
+    const provider: AiProvider = isProvider(opts.provider) ? opts.provider : (await getAiSettings()).defaultProvider;
+    if (provider !== 'claude' && !this.engine(provider)) throw new DesktopError(`${AI_LABEL[provider]} 연결을 이 앱에서 쓸 수 없습니다`, 'unavailable');
+    if (!(await this.enabledFor(provider))) throw this.offError(provider, true);
+    // 고른 모델 ('' = 그 AI의 기본값). 고르지 않았으면 그 AI 연결의 기본 모델을 따른다
     const model = typeof opts.model === 'string' ? (cleanModel(opts.model) ?? '') : undefined;
+    // 다른 AI로 새 대화: 이전 대화의 맥락(화면·테이블 등)과 질문·답변 글(carry 켬)을 붙인다
+    let context = opts.context;
+    let references = opts.references;
+    let from: StoredConversation | null = null;
+    if (typeof opts.carryFrom === 'string' && opts.carryFrom) {
+      from = validId(opts.carryFrom) ? ((this.sessions.get(opts.carryFrom) ?? (await this.load(opts.carryFrom)))?.conv ?? null) : null;
+      if (!from) throw new DesktopError('이전 대화를 찾을 수 없습니다', 'not-found');
+      const text = carryTranscript(publicConv(from), MAX_CARRY);
+      const base = context ?? from.context;
+      const chips = (base?.chips ?? []).filter((c) => c.kind !== 'conversation');
+      if (text) chips.push({ kind: 'conversation', label: `이전 대화 (${AI_LABEL[providerOf(from)]})`, text });
+      context = chips.length ? { title: base?.title || from.title, chips } : undefined;
+      references ??= from.references;
+    }
     const id = newId('c');
     const now = nowIso();
     let cwd: string;
@@ -155,7 +218,13 @@ export class ClaudeManager {
     let workId: string | undefined;
     let readOnly = false;
     let convRoot: string | null = null;
-    if (opts.newProject) {
+    if (from?.kind === 'new') {
+      // 새 프로젝트 대화를 다른 AI로: 같은 폴더에서 이어서 (이미 만든 파일이 있으므로 빈 폴더 검사는 하지 않음)
+      if (!from.root || !fs.existsSync(from.cwd)) throw new DesktopError('새 프로젝트 폴더를 찾을 수 없습니다', 'not-found');
+      convRoot = from.root;
+      cwd = from.cwd;
+      kind = 'new';
+    } else if (opts.newProject) {
       if (typeof root !== 'string' || !root) throw new DesktopError('새 프로젝트를 만들 폴더를 골라 주세요', 'invalid');
       convRoot = checkRoot(root);
       if (!(await isEmptyDir(convRoot))) throw new DesktopError('선택한 폴더가 비어 있지 않습니다. 새 프로젝트는 빈 폴더에서 시작해 주세요.', 'not-empty');
@@ -176,6 +245,7 @@ export class ClaudeManager {
     }
     const conv: StoredConversation = {
       id,
+      provider,
       root: convRoot,
       kind,
       title: NEW_TITLE,
@@ -188,8 +258,8 @@ export class ClaudeManager {
       ...(model !== undefined ? { model } : {}),
       ...(workId ? { workId } : {}),
       ...(readOnly ? { readOnly } : {}),
-      ...(opts.context ? { context: opts.context } : {}),
-      ...(opts.references?.length ? { references: opts.references.map((r) => ({ name: String(r.name ?? ''), text: String(r.text ?? '') })) } : {}),
+      ...(context ? { context } : {}),
+      ...(references?.length ? { references: references.map((r) => ({ name: String(r.name ?? ''), text: String(r.text ?? '') })) } : {}),
     };
     await saveConv(conv);
     this.sessions.set(id, new Session(conv));
@@ -215,14 +285,13 @@ export class ClaudeManager {
 
   async send(id: string, text: string, opts: { wait?: boolean } = {}): Promise<void> {
     const s = await this.session(id);
-    const cfg = await getStored();
-    if (!cfg.enabled) throw new DesktopError('Claude 연동이 꺼져 있습니다. Claude 연결에서 켜 주세요.', 'off');
+    if (!(await this.enabledFor(s.provider))) throw this.offError(s.provider, false);
     const body = String(text ?? '').trim();
     if (!body) throw new DesktopError('보낼 내용이 없습니다', 'invalid');
     if (body.length > 200000) throw new DesktopError('보낼 내용이 너무 깁니다', 'invalid');
     // 기다리던 여럿이 한꺼번에 깨어날 수 있으므로 다시 확인
     while (s.running) {
-      if (!opts.wait) throw new DesktopError('Claude가 응답하는 중입니다. 끝난 뒤 보내거나 [중지]를 눌러 주세요.', 'busy');
+      if (!opts.wait) throw new DesktopError(`${s.ai}가 응답하는 중입니다. 끝난 뒤 보내거나 [중지]를 눌러 주세요.`, 'busy');
       await new Promise<void>((r) => s.waiters.push(r));
     }
     this.clearIdle(s);
@@ -245,12 +314,18 @@ export class ClaudeManager {
       s.input.push(userMessage(content));
       s.conv.contextSent = true;
     } catch (e) {
-      const c = e instanceof RunError ? e.classified : classifyError({ text: (e as Error)?.message ?? String(e), errno: (e as NodeJS.ErrnoException)?.code });
+      const c = this.classifyThrown(s, e);
       this.addError(s, c);
-      void this.status.report({ ok: false, code: c.code, detail: c.detail });
+      this.report(s, { ok: false, code: c.code, detail: c.detail });
       this.endTurn(s);
     }
     this.scheduleSave(s);
+  }
+
+  private classifyThrown(s: Session, e: unknown): Classified {
+    if (e instanceof RunError) return e.classified;
+    if (e instanceof EngineError) return classifyError({ text: e.message, code: e.code, provider: s.provider });
+    return classifyError({ text: (e as Error)?.message ?? String(e), errno: (e as NodeJS.ErrnoException)?.code, provider: s.provider });
   }
 
   async setMode(id: string, mode: ChatMode, via: 'user' | 'plan' = 'user'): Promise<void> {
@@ -267,12 +342,11 @@ export class ClaudeManager {
     this.switchMode(s, mode, via, true);
   }
 
-  /** 대화의 모델 바꾸기 ('' = Claude Code 기본값). 열린 CLI에는 바로 알리고(응답 중이면 다음 응답부터), 닫혀 있으면 다음에 열 때 */
+  /** 대화의 모델 바꾸기 ('' = 그 AI의 기본값). 열린 연결에는 바로 알리고(응답 중이면 다음 응답부터), 닫혀 있으면 다음에 열 때 */
   async setModel(id: string, raw: string): Promise<void> {
     const model = typeof raw === 'string' ? (cleanModel(raw) ?? '') : '';
     const s = await this.session(id);
-    const cfg = await getStored();
-    const before = s.conv.model !== undefined ? s.conv.model : (cfg.model ?? '');
+    const before = s.conv.model !== undefined ? s.conv.model : await this.defaultModel(s.provider);
     s.conv.model = model;
     if (before !== model) {
       if (s.q) {
@@ -283,7 +357,7 @@ export class ClaudeManager {
           s.reopen = true;
         }
       }
-      this.addNotice(s, `모델을 ${this.models?.label(model) ?? (model || 'Claude Code 기본값')}(으)로 바꿨습니다${s.running ? ' · 다음 응답부터 적용됩니다' : ''}`);
+      this.addNotice(s, `모델을 ${this.modelLabel(s.provider, model)}(으)로 바꿨습니다${s.running ? ' · 다음 응답부터 적용됩니다' : ''}`);
     }
     this.emitState(s);
     this.scheduleSave(s);
@@ -328,6 +402,10 @@ export class ClaudeManager {
   async delete(id: string): Promise<void> {
     if (!validId(id)) return;
     const s = this.sessions.get(id);
+    // 앱이 보관한 AI 대화 기록 (Gemini) — Claude Code·Codex는 자기 기록을 PC에 남긴다
+    const conv = s?.conv ?? (await loadConv(id).catch(() => null));
+    const engine = conv ? this.engine(providerOf(conv)) : undefined;
+    if (engine?.forget && conv?.sessionId) await engine.forget(conv.sessionId).catch(() => undefined);
     if (s) {
       for (const p of [...s.pendings]) p.resolve(false);
       this.closeQuery(s);
@@ -357,20 +435,22 @@ export class ClaudeManager {
   }
 
   /**
-   * 설정·로그인이 바뀜: 쉬고 있는 Claude 프로세스는 바로 닫고, 응답 중인 것은 다음 메시지 때 새로 연다
-   * (다음 메시지에 새 환경·새 로그인으로 다시 열고 대화는 이어 간다)
+   * 설정·로그인이 바뀜: 쉬고 있는 연결(Claude 프로세스 등)은 바로 닫고, 응답 중인 것은 다음 메시지 때 새로 연다
+   * (다음 메시지에 새 환경·새 로그인으로 다시 열고 대화는 이어 간다). provider를 주면 그 AI의 대화만
    */
-  closeIdle(): void {
+  closeIdle(provider?: AiProvider): void {
     for (const s of this.sessions.values()) {
+      if (provider && s.provider !== provider) continue;
       if (!s.running && !s.pendings.length) this.closeQuery(s);
       else if (s.q) s.reopen = true;
     }
   }
 
-  /** 연동을 끔 / 앱 종료 */
-  async closeAll(): Promise<void> {
+  /** 연동을 끔 / 앱 종료. provider를 주면 그 AI의 대화만 */
+  async closeAll(provider?: AiProvider): Promise<void> {
     const saves: Promise<void>[] = [];
     for (const s of this.sessions.values()) {
+      if (provider && s.provider !== provider) continue;
       for (const p of [...s.pendings]) p.resolve(false);
       this.closeQuery(s);
       this.clearIdle(s);
@@ -447,15 +527,32 @@ export class ClaudeManager {
     const copy = await work.create(c.root, { conversationId: c.id });
     c.cwd = copy.path;
     c.workId = copy.id;
-    // 작업 폴더가 바뀌면 이전 Claude 세션은 이어 갈 수 없다
+    // 작업 폴더가 바뀌면 이전 AI 세션은 이어 갈 수 없다
     c.sessionId = undefined;
     this.addNotice(s, '작업 사본이 없어 원본의 지금 상태로 새로 만들었습니다');
     this.emitState(s);
   }
 
+  private dbHandlers(s: Session): ReturnType<typeof makeDbHandlers> {
+    return makeDbHandlers({
+      root: s.conv.root,
+      conversationId: s.conv.id,
+      ask: (q) => this.askSelect(s, q),
+      onSelect: (x) => this.addItem(s, { id: newId('sel'), type: 'select', env: x.env, db: x.db, sql: x.sql, rows: x.rows, maskedColumns: x.maskedColumns, ms: x.ms, at: nowIso() }),
+      onProposal: (card) => {
+        this.ensureCardSubscription();
+        this.addItem(s, { id: `q-${card.id}`, type: 'query', card, at: nowIso() });
+      },
+      onNotice: (n) => this.addNotice(s, n.text, n.msg, n.vars),
+    });
+  }
+
   private async open(s: Session): Promise<void> {
+    const p = s.provider;
+    if (p !== 'claude') return this.openEngine(s, p);
     const cfg = await getStored();
     s.cfg = cfg;
+    const ai = await getAiSettings();
     const cli = await this.status.cliTarget();
     if (!cli.ok) {
       const c = classifyError({ text: cli.message });
@@ -467,21 +564,11 @@ export class ClaudeManager {
       cwd: s.conv.cwd,
       mode: () => s.conv.mode,
       readOnly: !!s.conv.readOnly,
-      shellAllow: cfg.shellAllow,
+      shellAllow: ai.shellAllow,
       claudeDir: claudeConfigDir(env),
     };
     s.guard = guard;
-    const handlers = makeDbHandlers({
-      root: s.conv.root,
-      conversationId: s.conv.id,
-      ask: (q) => this.askSelect(s, q),
-      onSelect: (x) => this.addItem(s, { id: newId('sel'), type: 'select', env: x.env, db: x.db, sql: x.sql, rows: x.rows, maskedColumns: x.maskedColumns, ms: x.ms, at: nowIso() }),
-      onProposal: (card) => {
-        this.ensureCardSubscription();
-        this.addItem(s, { id: `q-${card.id}`, type: 'query', card, at: nowIso() });
-      },
-      onNotice: (n) => this.addNotice(s, n.text, n.msg, n.vars),
-    });
+    const handlers = this.dbHandlers(s);
     const server = createDbServer(this.createServer, this.toolFn, handlers);
     // 쓰지 않는 도구: 웹, 질문 창·모드 전환(앱이 정함), 워크트리, 예약·원격 실행, claude.ai 연동(디자인·아티팩트·파일 보내기)
     // (실제 CLI 2.1.302의 system/init tools 목록에서 확인. 없는 이름은 CLI가 무시)
@@ -490,7 +577,7 @@ export class ClaudeManager {
       'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'ScheduleWakeup', 'PushNotification', 'Workflow', 'SendMessage',
       'DesignSync', 'ClaudeDesign', 'Artifact', 'SendUserFile', 'Projects', 'OfferChromeSetup',
     ];
-    if (!cfg.shellAllow.length || s.conv.readOnly) disallowed.push('Bash', 'PowerShell', 'Monitor');
+    if (!ai.shellAllow.length || s.conv.readOnly) disallowed.push('Bash', 'PowerShell', 'Monitor');
     const summary = s.conv.context?.chips?.find((c) => c.kind === 'summary')?.text;
     const input = new InputQueue();
     const options: Options = {
@@ -505,7 +592,7 @@ export class ClaudeManager {
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: buildSystemAppend({ kind: s.conv.kind, readOnly: !!s.conv.readOnly, shellAllow: cfg.shellAllow, summary, projectName: s.conv.root ? path.basename(s.conv.root) : undefined }),
+        append: buildSystemAppend({ kind: s.conv.kind, readOnly: !!s.conv.readOnly, shellAllow: ai.shellAllow, summary, projectName: s.conv.root ? path.basename(s.conv.root) : undefined }),
       },
       includePartialMessages: true,
       disallowedTools: disallowed,
@@ -526,6 +613,63 @@ export class ClaudeManager {
     s.stderr = '';
     s.resumeAttempt = !!s.conv.sessionId;
     const q = this.queryFn({ prompt: input, options });
+    s.q = q;
+    s.input = input;
+    this.consume(s, q);
+  }
+
+  /** Gemini·ChatGPT: 엔진이 앱 도구·권한 확인을 이 대화 관리에 맡긴다 */
+  private async openEngine(s: Session, provider: EngineProvider): Promise<void> {
+    const engine = this.engine(provider);
+    if (!engine) throw new RunError({ code: 'missing', message: `${AI_LABEL[provider]} 연결을 이 앱에서 쓸 수 없습니다`, detail: provider });
+    s.cfg = null;
+    await this.ensureCwd(s);
+    const ai = await getAiSettings();
+    const guard: GuardContext = {
+      cwd: s.conv.cwd,
+      mode: () => s.conv.mode,
+      readOnly: !!s.conv.readOnly,
+      shellAllow: ai.shellAllow,
+      // Claude Code 계획 파일 자리 (다른 AI는 쓰지 않음 — 앱 폴더 안의 빈 자리)
+      claudeDir: path.join(dataDir(), 'ai-sessions', 'none'),
+    };
+    s.guard = guard;
+    const summary = s.conv.context?.chips?.find((c) => c.kind === 'summary')?.text;
+    const shellAllow = s.conv.readOnly ? [] : ai.shellAllow;
+    const input = new InputQueue();
+    s.stderr = '';
+    s.resumeAttempt = !!s.conv.sessionId;
+    const q = await engine.open({
+      conversationId: s.conv.id,
+      cwd: s.conv.cwd,
+      mode: s.conv.mode,
+      readOnly: !!s.conv.readOnly,
+      kind: s.conv.kind,
+      model: s.conv.model ?? (await engine.defaultModel()) ?? '',
+      instructions: buildSystemAppend({
+        kind: s.conv.kind,
+        readOnly: !!s.conv.readOnly,
+        shellAllow,
+        summary,
+        projectName: s.conv.root ? path.basename(s.conv.root) : undefined,
+        // Gemini·ChatGPT 모두 앱 도구로 일한다 (ChatGPT는 Codex 자체 도구를 끔)
+        tools: 'agent',
+      }),
+      shellAllow,
+      ...(s.conv.sessionId ? { resume: s.conv.sessionId } : {}),
+      input,
+      db: this.dbHandlers(s),
+      canUseTool: (name, inp, o) => this.canUseTool(s, guard, name, inp, o.signal),
+      stderr: (d: string) => {
+        s.stderr = (s.stderr + d).slice(-4000);
+      },
+    });
+    // 여는 동안 닫혔으면(삭제·연동 끔) 바로 닫는다
+    if (!this.sessions.has(s.conv.id)) {
+      input.end();
+      q.close();
+      return;
+    }
     s.q = q;
     s.input = input;
     this.consume(s, q);
@@ -561,7 +705,7 @@ export class ClaudeManager {
     s.idleTimer.unref?.();
   }
 
-  private consume(s: Session, q: Query): void {
+  private consume(s: Session, q: RunningQuery): void {
     void (async () => {
       let error: unknown = null;
       try {
@@ -586,32 +730,33 @@ export class ClaudeManager {
       if (intentional || !s.running || !s.turn || s.turn.gotResult) return;
       // 응답 도중 끝남 (프로세스 오류·인증 실패로 종료 등)
       const err = error as NodeJS.ErrnoException | null;
-      const text = `${err?.message ?? 'Claude CLI가 응답 도중 끝났습니다'}\n${s.stderr}`;
+      const text = `${err?.message ?? `${s.provider === 'claude' ? 'Claude CLI' : s.ai}가 응답 도중 끝났습니다`}\n${s.stderr}`;
       if (s.resumeAttempt && !s.turn.gotInit && !s.turn.fallbackTried && /No conversation found|--resume|session id|not a valid uuid/i.test(text)) {
         await this.resumeFallback(s);
         return;
       }
-      const c = classifyError({ text, errno: err?.code });
+      const c = error instanceof EngineError ? classifyError({ text, code: error.code, provider: s.provider }) : classifyError({ text, errno: err?.code, provider: s.provider });
       if (!s.turn.hadError) {
         this.addError(s, c);
-        void this.status.report({ ok: false, code: c.code, detail: c.detail });
+        this.report(s, { ok: false, code: c.code, detail: c.detail });
       }
       this.endTurn(s);
     })();
   }
 
-  /** 이어서 대화할 Claude 세션을 찾지 못함 → 새 세션으로 같은 질문을 (맥락 포함) 다시 보낸다 */
+  /** 이어서 대화할 AI 세션을 찾지 못함 → 새 세션으로 같은 질문을 (맥락 포함) 다시 보낸다 */
   private async resumeFallback(s: Session): Promise<void> {
     const t = s.turn!;
     t.fallbackTried = true;
     s.conv.sessionId = undefined;
     this.closeQuery(s);
-    this.addNotice(s, '이전 Claude 대화 기록을 찾지 못해 새로 이어서 진행합니다 (앞의 대화 내용은 Claude가 기억하지 못합니다)');
+    this.addNotice(s, `이전 ${s.ai} 대화 기록을 찾지 못해 새로 이어서 진행합니다 (앞의 대화 내용은 ${s.ai}가 기억하지 못합니다)`);
     try {
       await this.open(s);
-      s.input!.push(userMessage(buildFirstMessage(t.userText, s.conv.context, s.conv.references)));
+      if (s.turn !== t || !s.input) return;
+      s.input.push(userMessage(buildFirstMessage(t.userText, s.conv.context, s.conv.references)));
     } catch (e) {
-      const c = e instanceof RunError ? e.classified : classifyError({ text: (e as Error).message });
+      const c = this.classifyThrown(s, e);
       this.addError(s, c);
       this.endTurn(s);
     }
@@ -656,13 +801,13 @@ export class ClaudeManager {
         this.scheduleSave(s);
         this.emitState(s);
       }
-      if (s.cfg) this.status.noteInit(s.cfg, m);
+      if (s.cfg && s.provider === 'claude') this.status.noteInit(s.cfg, m);
       return;
     }
     if (!t) return;
     if (m.subtype === 'api_retry' && !t.retryNoticed && Number(m.attempt) >= 2) {
       t.retryNoticed = true;
-      this.addNotice(s, `Claude 서버 응답이 늦어 다시 시도하는 중입니다 (${m.attempt}/${m.max_retries})`);
+      this.addNotice(s, `${s.ai} 서버 응답이 늦어 다시 시도하는 중입니다 (${m.attempt}/${m.max_retries})`);
     } else if (m.subtype === 'status' && m.status === 'compacting' && !t.compactNoticed) {
       t.compactNoticed = true;
       this.addNotice(s, '대화가 길어져 앞부분을 요약하는 중입니다');
@@ -736,10 +881,10 @@ export class ClaudeManager {
     const sub = !!m.parent_tool_use_id;
     if (m.error && !sub) {
       if (!t.hadError) {
-        const c = classifyError({ assistantError: m.error, text: textOf(msg.content) });
+        const c = classifyError({ assistantError: m.error, text: textOf(msg.content), provider: s.provider });
         t.hadError = true;
         this.addError(s, c);
-        void this.status.report({ ok: false, code: c.code, detail: c.detail });
+        this.report(s, { ok: false, code: c.code, detail: c.detail });
       }
       return;
     }
@@ -822,12 +967,12 @@ export class ClaudeManager {
     const failed = !!m.is_error || m.subtype !== 'success';
     if (failed) {
       if (!t.hadError && !s.interrupted) {
-        const c = classifyError({ text: errText || String(m.subtype ?? ''), startupReason: m.startup_failure_reason, status: m.api_error_status });
+        const c = classifyError({ text: errText || String(m.subtype ?? ''), startupReason: m.startup_failure_reason, status: m.api_error_status, code: m.pa_code, provider: s.provider });
         t.hadError = true;
         this.addError(s, c);
-        void this.status.report({ ok: false, code: c.code, detail: c.detail });
+        this.report(s, { ok: false, code: c.code, detail: c.detail });
       }
-    } else if (!t.hadError) void this.status.report({ ok: true, apiKeySource: s.apiKeySource });
+    } else if (!t.hadError) this.report(s, { ok: true, apiKeySource: s.apiKeySource });
     this.renderActivity(s);
     const work = services.work;
     if (t.edited.size && s.conv.workId && work) {
@@ -894,7 +1039,7 @@ export class ClaudeManager {
         {
           kind: 'plan',
           title: s.conv.kind === 'new' ? '계획 확정' : '수정 진행',
-          detail: (plan || 'Claude가 계획을 마쳤습니다. 작업 사본에서 수정을 진행할까요?').slice(0, 20000),
+          detail: (plan || `${s.ai}가 계획을 마쳤습니다. 작업 사본에서 수정을 진행할까요?`).slice(0, 20000),
         },
         signal,
       );
@@ -907,7 +1052,7 @@ export class ClaudeManager {
     if (SHELL_TOOLS.has(name)) {
       const pre = preToolUse(guard, name, input);
       if (pre.decision === 'deny') return deny(pre.reason);
-      const ok = await this.ask(s, { kind: 'command', title: 'Claude가 명령을 실행하려고 합니다', detail: String(input.command ?? '') }, signal);
+      const ok = await this.ask(s, { kind: 'command', title: `${s.ai}가 명령을 실행하려고 합니다`, detail: String(input.command ?? '') }, signal);
       return ok ? allow() : deny('사용자가 명령 실행을 거부했습니다. 같은 명령을 다시 요청하지 말고, 명령 없이 진행하거나 사용자가 직접 실행하도록 안내해 주세요.');
     }
     const d = permissionDefault(guard, name, input);
@@ -919,8 +1064,8 @@ export class ClaudeManager {
     const envName = ENV_LABEL[env] ?? env;
     const detail =
       env === 'prod'
-        ? `Claude가 운영 DB ${q.dbName}를 조회하려고 합니다(최대 ${q.maxRows}행${q.mask ? ', 개인정보 가림' : ''}). 운영 조회는 항상 확인합니다. 실행할까요?`
-        : `Claude가 ${envName} DB ${q.dbName}를 조회하려고 합니다(최대 ${q.maxRows}행${q.mask ? ', 개인정보 가림' : ''}). 실행할까요?`;
+        ? `${s.ai}가 운영 DB ${q.dbName}를 조회하려고 합니다(최대 ${q.maxRows}행${q.mask ? ', 개인정보 가림' : ''}). 운영 조회는 항상 확인합니다. 실행할까요?`
+        : `${s.ai}가 ${envName} DB ${q.dbName}를 조회하려고 합니다(최대 ${q.maxRows}행${q.mask ? ', 개인정보 가림' : ''}). 실행할까요?`;
     return this.ask(s, { kind: 'prod-select', title: `${envName} DB 조회`, detail, sql: q.sql, db: q.dbName, env, maxRows: q.maxRows, mask: q.mask });
   }
 

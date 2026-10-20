@@ -243,8 +243,25 @@ function setupHost(): void {
         clearTimeout(timer);
       }
     },
+    // AI 서버 요청 (Gemini): Chromium 네트워크 → PC 프록시·PAC·Windows 인증서 저장소(회사 TLS 검사 인증서 포함)를 따른다
+    async fetch(url, init) {
+      const { proxy, ...rest } = init;
+      if (proxy) {
+        const ses = session.fromPartition('pa-ai');
+        // Chromium 프록시 규칙에는 계정을 넣을 수 없다 (계정은 PC의 통합 인증으로)
+        const rules = proxy.replace(/^([a-z]+:\/\/)[^/@\s]+@/i, '$1');
+        if (aiProxyRules !== rules) {
+          await ses.setProxy({ proxyRules: rules });
+          aiProxyRules = rules;
+        }
+        return ses.fetch(url, rest);
+      }
+      return net.fetch(url, rest);
+    },
   });
 }
+
+let aiProxyRules = '';
 
 function registerAppChannels(): void {
   handle('app.info', () => ({ version: app.getVersion(), platform: process.platform, userData: app.getPath('userData') }));

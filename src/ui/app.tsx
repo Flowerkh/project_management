@@ -69,7 +69,8 @@ export interface Initial {
   runState?: RunState;
   modal?: ModalKind;
   /** 미리보기: 데스크톱 팝업(POP-03·POP-04)·Claude 패널 */
-  deskModal?: 'claude' | 'project';
+  /** 미리보기: 처음 열 창 (AI 연결 페이지 또는 프로젝트 연결) */
+  deskModal?: 'ai' | 'claude' | 'gemini' | 'openai' | 'project';
   chat?: boolean;
 }
 
@@ -88,9 +89,10 @@ export function App(props: { init?: Initial }) {
   const [rs, setRs] = useState<RunState | null>(init.runState ?? null);
   const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...safeStorage<Partial<Settings>>('pa.settings', {}) }));
   const [popover, setPopover] = useState<HeaderPopover | null>(init.popover ?? null);
-  const [modal, setModal] = useState<ModalKind>(init.modal ?? (init.deskModal === 'claude' ? 'settings' : null));
-  /** 설정 창에서 처음 보일 페이지 (Claude 연결은 데스크톱만) */
-  const [settingsPage, setSettingsPage] = useState<SettingsPageId>(init.deskModal === 'claude' ? 'claude' : 'analysis');
+  const deskPage = init.deskModal && init.deskModal !== 'project' ? init.deskModal : null;
+  const [modal, setModal] = useState<ModalKind>(init.modal ?? (deskPage ? 'settings' : null));
+  /** 설정 창에서 처음 보일 페이지 (AI 연결 페이지는 데스크톱만) */
+  const [settingsPage, setSettingsPage] = useState<SettingsPageId>(deskPage ?? 'analysis');
   const openSettings = useCallback((page: SettingsPageId) => {
     setSettingsPage(page);
     setModal('settings');

@@ -178,7 +178,7 @@ test('연결 상태: 꺼짐(off) → [다시 확인]은 꺼져 있어도 CLI·�
   const n0 = fq.calls.options.length;
   const full = await call('claude.status', true);
   assert.equal(full.state, 'on');
-  assert.equal(full.checks!.cli.ok, true);
+  assert.equal(full.checks!.cli!.ok, true);
   assert.equal(full.checks!.network.ok, true);
   assert.equal(full.checks!.auth.ok, true);
   assert.equal(typeof full.authMs, 'number');

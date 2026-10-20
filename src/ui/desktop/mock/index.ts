@@ -1,6 +1,7 @@
 // 화면 미리보기용 가짜 데스크톱 기능 (?mock&desk). Electron 없이 브라우저에서 데스크톱 화면을 그려 보고 스크린샷을 찍는다.
 // 각 기능 모듈이 자기 채널의 가짜 응답을 mock/<기능>.ts에 둔다.
 import type { DesktopEvent } from '../../../shared/desktop-api';
+import { aiMocks } from './ai';
 import { baseMocks } from './base';
 import { claudeMocks } from './claude';
 import { dbMocks } from './db';
@@ -31,7 +32,8 @@ export function installDeskMock(): void {
     root: MOCK_ROOT,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   };
-  const handlers: Record<string, MockHandler> = { ...baseMocks(kit), ...workMocks(kit), ...dbMocks(kit), ...claudeMocks(kit) };
+  const claude = claudeMocks(kit);
+  const handlers: Record<string, MockHandler> = { ...baseMocks(kit), ...workMocks(kit), ...dbMocks(kit), ...claude, ...aiMocks(kit, claude) };
   (window as unknown as { __DESK_MOCK__: unknown }).__DESK_MOCK__ = {
     async invoke(channel: string, args: unknown[]) {
       const h = handlers[channel];

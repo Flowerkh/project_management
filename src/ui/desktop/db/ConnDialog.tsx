@@ -226,7 +226,7 @@ export function ConnDialog(props: {
           </div>,
         )}
         {field('이름', text('name', '예) shop_dev', 'mono', { 'data-autofocus': true, maxLength: 60 }))}
-        <div class="db-help" style={{ marginTop: '-6px' }}>화면과 Claude에 보이는 이름입니다. 운영 DB 변경을 실행할 때 이 이름을 입력합니다.</div>
+        <div class="db-help" style={{ marginTop: '-6px' }}>화면과 AI에 보이는 이름입니다. 운영 DB 변경을 실행할 때 이 이름을 입력합니다.</div>
         {field(
           '호스트',
           <>
@@ -267,7 +267,7 @@ export function ConnDialog(props: {
           '권장 · 선택',
         )}
         <div class="db-help">
-          계정은 SELECT 외 쿼리 실행에 씁니다. 조회 전용 계정을 넣으면 Claude 조회와 메뉴 읽기는 그 계정으로 합니다. 조회 전용 계정만 넣으면 SELECT 외 쿼리는
+          계정은 SELECT 외 쿼리 실행에 씁니다. 조회 전용 계정을 넣으면 AI 조회와 메뉴 읽기는 그 계정으로 합니다. 조회 전용 계정만 넣으면 SELECT 외 쿼리는
           [SQL 복사]만 할 수 있습니다.
         </div>
         {oracle && (

@@ -1,0 +1,99 @@
+/* AI 연결 화면 (설정 > AI 공통·Gemini·ChatGPT, 대화창의 AI·모델 고르기, 다른 AI로 새 대화). 접두어 ai- */
+
+/* 글자 배지 C · G · O */
+.ai-badge { flex: none; display: inline-flex; align-items: center; justify-content: center; font-family: var(--sans); font-weight: 700; line-height: 1; user-select: none; }
+
+/* ------------------------------------------------------------ 설정 > AI 공통 */
+.ai-cards { display: flex; flex-wrap: wrap; gap: 10px; }
+.ai-card {
+  flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer;
+}
+.ai-card.on { border-color: var(--acc); box-shadow: inset 0 0 0 0.5px var(--acc); background: #f7f9fe; }
+.ai-card.off { cursor: default; }
+.ai-card:not(.off):not(.on):hover { border-color: var(--acc-line); }
+.ai-card .h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ai-card .h input { margin: 0; width: 16px; height: 16px; accent-color: var(--acc); flex: none; }
+.ai-card .h input:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ai-card .h b { font-size: 14px; color: var(--ink); }
+.ai-card.off .h b { color: var(--muted); }
+.ai-card .h .tag { margin-left: auto; }
+.ai-card .d { font-size: 12.5px; line-height: 1.55; color: var(--ink2); overflow-wrap: anywhere; }
+.ai-card.off .d { color: var(--muted); }
+.ai-info { margin: 0; display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.ai-info svg { flex: none; margin-top: 2px; }
+.ai-diff { overflow-x: auto; border: 1px solid var(--line2); border-radius: 8px; }
+.ai-diff table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12.5px; line-height: 1.5; color: var(--ink2); }
+.ai-diff thead tr { background: var(--surf); }
+.ai-diff th, .ai-diff td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line2); }
+.ai-diff thead th { padding: 8px 12px; font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.ai-diff th.k { width: 118px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.ai-diff tbody tr:last-child > * { border-bottom: none; }
+.ai-diff .warn { color: var(--warn); font-weight: 600; }
+.ai-perm { padding: 12px 14px; border-radius: 8px; background: var(--surf); }
+.ai-perm .cp-prow .k { width: 74px; }
+
+/* ------------------------------------------------------------ 설정 > Claude · Gemini · ChatGPT 공통 조각 */
+.ai-auth { display: flex; flex-direction: column; gap: 7px; }
+.cp-field-row > .k { flex: none; width: 120px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.ai-fixed { font-family: var(--mono); font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
+.ai-mlist { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ai-mlist li + li { border-top: 1px solid var(--line2); }
+.ai-mrow { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: none; background: #fff; text-align: left; cursor: pointer; }
+.ai-mrow:hover { background: var(--surf); }
+.ai-mrow.def { background: var(--surf); }
+.ai-mrow:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.ai-mrow .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ai-mrow .t b { font-size: 13px; font-weight: 600; color: var(--ink); }
+.ai-mrow .t span { font-size: 12px; color: var(--muted); }
+.ai-fee { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 8px; background: var(--surf); }
+.ai-fee h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--ink); }
+.ai-fee dl { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.ai-fee dl > div { display: flex; gap: 12px; font-size: 12.5px; line-height: 1.55; }
+.ai-fee dt { flex: none; width: 76px; font-weight: 600; color: var(--muted); }
+.ai-fee dd { margin: 0; flex: 1; min-width: 0; color: var(--ink2); }
+.ai-fee .warn dd { color: var(--warn); }
+.ai-warn { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 12.5px; line-height: 1.55; }
+.ai-warn svg { flex: none; margin-top: 2px; }
+.ai-pointer { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 10px 12px; border-radius: 8px; background: var(--surf); font-size: 12.5px; line-height: 1.5; color: var(--ink2); }
+.ai-pointer svg { flex: none; }
+
+/* ------------------------------------------------------------ 대화창: 입력란 아래 AI·모델 */
+.cp-model-chip {
+  flex: 0 1 auto; min-width: 0; max-width: 230px; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 7px 0 4px;
+  border: 1px solid transparent; border-radius: 8px; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); cursor: pointer;
+}
+.cp-model-chip:hover:not(:disabled), .cp-model-chip.on { border-color: var(--acc-line); background: var(--acc-bg); }
+.cp-model-chip:disabled { cursor: default; opacity: 0.6; }
+.cp-model-chip:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.cp-model-chip .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-model-chip > svg { flex: none; transition: transform 0.12s; }
+.cp-model-chip.on > svg { transform: rotate(180deg); }
+.ai-pick {
+  position: absolute; z-index: 30; width: 350px; max-width: calc(100% - 16px); max-height: min(520px, 70vh); overflow: auto; display: flex; flex-direction: column; padding: 6px 0;
+  border: 1px solid #bcc5cf; border-radius: 10px; background: #fff; box-shadow: 0 16px 40px rgba(31, 41, 51, 0.22);
+}
+.ai-pick-h { padding: 6px 14px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.ai-pick-m, .ai-pick-ai {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 14px; border: none; background: transparent; text-align: left; cursor: pointer; color: var(--ink); font-family: inherit;
+}
+.ai-pick-m:hover:not(:disabled), .ai-pick-ai:hover, .ai-pick-m:focus-visible, .ai-pick-ai:focus-visible { background: var(--surf); outline: none; }
+.ai-pick-m:focus-visible, .ai-pick-ai:focus-visible { box-shadow: inset 2px 0 0 var(--acc); }
+.ai-pick-m.on { background: var(--acc-bg); }
+.ai-pick-m:disabled { cursor: default; opacity: 0.55; }
+.ai-pick-m .ck { flex: none; width: 15px; display: flex; }
+.ai-pick-m .t, .ai-pick-ai .t { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ai-pick-m .t b, .ai-pick-ai .t b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-pick-m .t span, .ai-pick-ai .t span { font-size: 12px; color: var(--muted); }
+.ai-pick-ai.off .t b { color: var(--muted); }
+.ai-pick-ai .go { margin-left: auto; flex: none; font-size: 12px; font-weight: 600; color: var(--acc-d); white-space: nowrap; }
+.ai-pick-sep { flex: none; height: 1px; margin: 6px 0; background: var(--line2); }
+.ai-pick-note { display: flex; align-items: center; gap: 6px; padding: 4px 14px 6px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.ai-pick-f { margin-top: 4px; padding: 8px 14px 4px; border-top: 1px solid var(--line2); font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
+/* ------------------------------------------------------------ 다른 AI로 새 대화 */
+.ai-sw-t { display: inline-flex; align-items: center; gap: 10px; }
+.ai-sw { display: flex; flex-direction: column; gap: 14px; }
+.ai-sw-p { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink2); }
+.ai-sw-carry { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surf); }
+.ai-sw .cp-field-row label { width: 52px; }
+.ai-sw .cp-field-row .inp { height: 32px; }

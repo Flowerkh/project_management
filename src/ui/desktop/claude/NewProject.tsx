@@ -1,12 +1,13 @@
 // SCR-11 새 프로젝트: 요구사항 → 계획 확정 → 생성 → 분석.
-// 고른 빈 폴더에서 Claude가 계획 모드로 요구사항·계획을 정리하고, 본인이 [계획 확정]을 눌러야 파일을 만든다(작업 사본 없음).
+// 고른 빈 폴더에서 AI(기본 AI 또는 고른 AI)가 계획 모드로 요구사항·계획을 정리하고, 본인이 [계획 확정]을 눌러야 파일을 만든다(작업 사본 없음).
 // 생성이 끝나면 props.onOpenFolder(폴더)로 앱이 그 폴더를 열어 분석한다. 진행 중에 화면을 떠나도 돌아오면 이어서 본다.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { AnalysisResult } from '../../../engine/types';
-import type { ChatItem } from '../../../shared/desktop-api';
+import { AI_LABEL, AI_PROVIDERS, type AiProvider, type ChatItem } from '../../../shared/desktop-api';
 import { ConfirmDialog } from '../../components/Dialogs';
 import { Icon, Spinner } from '../../icons';
 import { listRecent, loadRecent } from '../../recent';
+import { AiBadge, chatProvider, providerBlocked, providerEnabled } from '../ai/providers';
 import { errText } from '../bridge';
 import { useDesk } from '../ctx';
 import { msg } from '../messages';
@@ -73,6 +74,13 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
   const [autoCancelled, setAutoCancelled] = useState(false);
   /** 확정한 계획 글 */
   const [savedPlan, setSavedPlan] = useState<string | null>(null);
+  /** 시작 전에 고른 AI (시작한 뒤에는 그 대화의 AI) */
+  const [pickAi, setPickAi] = useState<AiProvider>(() => chatProvider(app));
+  const usableAis = AI_PROVIDERS.filter((p) => providerEnabled(app, p) && !providerBlocked(app, p));
+  // 고른 AI를 끄면 켜진 AI로
+  const pickEff = usableAis.includes(pickAi) ? pickAi : (usableAis[0] ?? pickAi);
+  const provider: AiProvider = conv ? (conv.provider ?? 'claude') : pickEff;
+  const ai = AI_LABEL[provider];
   const logRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -227,7 +235,7 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
     }
     if (!folder.empty) return false;
     const references = refResult ? [{ name: refResult.project.name, text: referenceText(refResult, refOpt?.root) }] : undefined;
-    const c = await cv.start(folder.path, { newProject: true, references });
+    const c = await cv.start(folder.path, { newProject: true, references, provider });
     if (!c) return false;
     const r: Resume = { folder: folder.path, conversationId: c.id, refName: refResult?.project.name, refAt: refResult?.project.analyzedAt, tech: refResult ? techLine(refResult) : undefined };
     writeResume(r);
@@ -239,7 +247,7 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
     const text = input.trim();
     if (!text || cv.starting) return;
     if (running) {
-      app.toast('Claude가 작업하는 중입니다. 멈추려면 [중지]를 누르세요.');
+      app.toast(`${ai}가 작업하는 중입니다. 멈추려면 [중지]를 누르세요.`);
       return;
     }
     setInput('');
@@ -422,6 +430,23 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
               </span>
             </div>
             <div class="cp-info-row">
+              <span class="k">AI</span>
+              <span class="v">
+                <AiBadge provider={provider} size={20} />
+                {!started && usableAis.length > 1 ? (
+                  <select class="inp" value={pickEff} onChange={(e) => setPickAi((e.target as HTMLSelectElement).value as AiProvider)} aria-label="새 프로젝트를 만들 AI">
+                    {usableAis.map((p) => (
+                      <option key={p} value={p}>
+                        {AI_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span>{ai}</span>
+                )}
+              </span>
+            </div>
+            <div class="cp-info-row">
               <span class="k">기술</span>
               <span class="v">{tech || <span class="cp-muted">대화로 정함</span>}</span>
             </div>
@@ -434,7 +459,7 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
                 <Icon name="sparkle" size={15} color="var(--ink2)" />
                 요구사항
               </h3>
-              <span class="right">Claude가 대화에서 정리</span>
+              <span class="right">{ai}가 대화에서 정리</span>
             </div>
             {plan?.reqs.length ? (
               <ul class="cp-req">
@@ -443,7 +468,7 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
                 ))}
               </ul>
             ) : (
-              <div class="cp-req-empty">{started ? 'Claude가 요구사항을 정리하는 중입니다.' : '만들 시스템을 설명하면 Claude가 요구사항을 정리해 여기에 보여 줍니다.'}</div>
+              <div class="cp-req-empty">{started ? `${ai}가 요구사항을 정리하는 중입니다.` : `만들 시스템을 설명하면 ${ai}가 요구사항을 정리해 여기에 보여 줍니다.`}</div>
             )}
             {plan && !confirmed && <div class="cp-req-empty" style={{ marginTop: '6px', fontSize: '12px' }}>고칠 점은 오른쪽 입력창으로 말하면 계획을 다시 세웁니다.</div>}
           </section>
@@ -496,8 +521,8 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
             ) : (
               <div class="cp-req-empty">
                 {lastAnswer && !plan
-                  ? 'Claude가 제안한 계획은 오른쪽 진행 기록에 있습니다. 확인한 뒤 [계획 확정]을 누르면 파일을 만들기 시작합니다.'
-                  : 'Claude가 계획 모드로 기본 구성·테이블·소스·화면 목록을 만듭니다. 확인한 뒤 [계획 확정]을 눌러야 파일을 만들기 시작합니다.'}
+                  ? `${ai}가 제안한 계획은 오른쪽 진행 기록에 있습니다. 확인한 뒤 [계획 확정]을 누르면 파일을 만들기 시작합니다.`
+                  : `${ai}가 계획 모드로 기본 구성·테이블·소스·화면 목록을 만듭니다. 확인한 뒤 [계획 확정]을 눌러야 파일을 만들기 시작합니다.`}
               </div>
             )}
           </section>
@@ -507,7 +532,7 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
           <section class="cp-np-card cp-np-log" aria-label="진행 기록">
             <div class="cp-np-card-t">
               <h3>진행 기록</h3>
-              <span class="sub">Claude와 나눈 대화와 만든 파일</span>
+              <span class="sub">{ai}와 나눈 대화와 만든 파일</span>
             </div>
             <div
               class="cp-np-log-body"
@@ -527,12 +552,12 @@ export function NewProjectView(props: { onCancel: () => void; onOpenFolder: (roo
               )}
               {!conv && !cv.loading && (
                 <div class="cp-msg">
-                  <Avatar size={24} />
+                  <Avatar size={24} provider={provider} />
                   <div class="cp-msg-body cp-np-empty">
                     <span>이렇게 진행합니다.</span>
                     <ol>
                       <li>만들 빈 폴더를 고릅니다. 참고할 분석 결과를 고르면 그 구조·이름 규칙을 따릅니다.</li>
-                      <li>만들 시스템을 아래에 적어 보내면 Claude가 요구사항을 정리하고 계획을 세웁니다(파일은 만들지 않음).</li>
+                      <li>만들 시스템을 아래에 적어 보내면 {ai}가 요구사항을 정리하고 계획을 세웁니다(파일은 만들지 않음).</li>
                       <li>계획을 확인하고 [계획 확정]을 누르면 고른 폴더에만 파일을 만듭니다.</li>
                       <li>생성이 끝나면 바로 분석해 결과 요약과 트리를 보여 줍니다.</li>
                     </ol>

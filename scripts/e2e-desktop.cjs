@@ -233,7 +233,7 @@ async function main() {
   });
 
   await step('설정 > Claude 연결(POP-03)', async () => {
-    await win.click('header button:has-text("Claude")');
+    await win.click('header button:has-text("AI 대화")');
     await win.waitForSelector('[role="dialog"][aria-label="설정"] #set-page-claude', { timeout: 10000 });
     await win.waitForSelector('#set-page-claude button:has-text("연동 켜기"):not([disabled])', { timeout: 60000 });
     await shot('pop03');
@@ -275,23 +275,23 @@ async function main() {
     await win.locator('.trow[data-key^="s:"]').first().click();
     await win.waitForSelector('.main-col h1.page-title', { timeout: 10000 });
     await win.click('button:has-text("Claude에게 묻기")');
-    await win.waitForSelector('aside[aria-label="Claude 대화"]', { timeout: 10000 });
+    await win.waitForSelector('aside[aria-label="AI 대화"]', { timeout: 10000 });
     await sleep(300);
     await shot('chat-open');
     await win.fill('textarea[aria-label="Claude에게 보낼 내용"]', '주문 상태를 바꾸면 주문 이력이 두 번씩 쌓여요. 원인을 찾아 주세요.');
     await win.press('textarea[aria-label="Claude에게 보낼 내용"]', 'Enter');
-    await win.waitForSelector('aside[aria-label="Claude 대화"] button:has-text("수정 진행")', { timeout: 90000 });
+    await win.waitForSelector('aside[aria-label="AI 대화"] button:has-text("수정 진행")', { timeout: 90000 });
     await sleep(300);
     await shot('chat-plan');
-    await win.click('aside[aria-label="Claude 대화"] button:has-text("수정 진행")');
-    await win.waitForSelector('aside[aria-label="Claude 대화"] button:has-text("변경 검토")', { timeout: 60000 });
-    await win.waitForSelector('aside[aria-label="Claude 대화"] button[aria-label="보내기"]', { timeout: 30000 });
+    await win.click('aside[aria-label="AI 대화"] button:has-text("수정 진행")');
+    await win.waitForSelector('aside[aria-label="AI 대화"] button:has-text("변경 검토")', { timeout: 60000 });
+    await win.waitForSelector('aside[aria-label="AI 대화"] button[aria-label="보내기"]', { timeout: 30000 });
     await sleep(400);
     await shot('chat-changes');
   });
 
   await step('변경 검토 → 적용·커밋·푸시', async () => {
-    await win.click('aside[aria-label="Claude 대화"] button:has-text("변경 검토")');
+    await win.click('aside[aria-label="AI 대화"] button:has-text("변경 검토")');
     await win.waitForSelector('text=OrderServiceImpl.java', { timeout: 15000 });
     await sleep(400);
     await shot('scr10');
@@ -314,19 +314,19 @@ async function main() {
 
   await step('쿼리 카드 실행', async () => {
     const box = 'textarea[aria-label="Claude에게 보낼 내용"]';
-    if (!(await win.locator(box).count())) await win.click('header button:has-text("Claude")');
+    if (!(await win.locator(box).count())) await win.click('header button:has-text("AI 대화")');
     await win.waitForSelector(box, { timeout: 10000 });
     await win.fill(box, '쌓인 중복 이력도 지워 주세요');
     await win.press(box, 'Enter');
-    await win.waitForSelector('aside[aria-label="Claude 대화"] button:has-text("실행"):not([disabled])', { timeout: 60000 });
+    await win.waitForSelector('aside[aria-label="AI 대화"] button:has-text("실행"):not([disabled])', { timeout: 60000 });
     await sleep(400);
     await shot('chat-query');
-    await win.locator('aside[aria-label="Claude 대화"] button:has-text("실행"):not([disabled])').last().click();
+    await win.locator('aside[aria-label="AI 대화"] button:has-text("실행"):not([disabled])').last().click();
     const dlg = win.locator('[role="dialog"]:has-text("쿼리 실행 확인")');
     await dlg.waitFor({ timeout: 10000 });
     await shot('query-confirm');
     await dlg.locator('button:has-text("실행")').last().click();
-    await win.waitForSelector('aside[aria-label="Claude 대화"] :text("실행됨")', { timeout: 30000 });
+    await win.waitForSelector('aside[aria-label="AI 대화"] :text("실행됨")', { timeout: 30000 });
     await sleep(400);
     await shot('chat-query-done');
   });

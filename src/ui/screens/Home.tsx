@@ -120,7 +120,7 @@ export function Home(props: {
             <li>DB 테이블·메뉴·화면·배치 트리와 상세 (앱 화면은 API로 서버 테이블까지)</li>
             <li>소스 보기(근거 줄·테이블 강조), 결과 파일 저장</li>
           </ul>
-          <div class="muted" style={{ fontSize: '12px', marginTop: '8px' }}>Claude 연동·형상관리·DB 조회는 데스크톱 앱에서 씁니다. 내보내기(Excel)는 다음 단계에서 붙습니다.</div>
+          <div class="muted" style={{ fontSize: '12px', marginTop: '8px' }}>AI 연동(Claude·Gemini·ChatGPT)·형상관리·DB 조회는 데스크톱 앱에서 씁니다. 내보내기(Excel)는 다음 단계에서 붙습니다.</div>
         </section>
         )}
       </div>

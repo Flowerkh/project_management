@@ -1,19 +1,20 @@
-// 설정 > Claude 연결 (POP-03): 연동 켜기·끄기(MSG-14 동의) · 인증 방식(지금 계정·계정 바꾸기) · 연결 확인(CLI·인터넷·인증) ·
-// 모델 · 보내는 정보 · 기본 권한 · AI 요약.
+// 설정 > AI 연결 > Claude (POP-03): 연동 켜기·끄기(MSG-14 동의) · 인증 방식(지금 계정·계정 바꾸기) · 연결 확인(CLI·인터넷·인증) ·
+// 모델 · 보내는 정보 · AI 요약. 기본 권한·셸 명령 허용 목록은 AI 공통(모든 AI가 함께 씀)에서 정한다.
 // 앱은 로그인 토큰·비밀번호를 읽거나 저장하지 않는다. 로그인·계정 바꾸기는 [터미널에서 로그인]으로 연 Claude Code 화면(/login)에서 한다.
 // 계정 이름(이메일·조직·구독)은 Claude Code가 알려 준 것을 화면에만 보여 주고 저장하지 않는다.
 // API 키는 저장할 때만 보내고 화면에 다시 보여 주지 않는다(메인 프로세스가 Windows 사용자 계정 기준(DPAPI)으로 암호화해 보관).
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AuthMode, ClaudeAccount, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../../shared/desktop-api';
-import type { SettingsPage, SettingsPageHandle } from '../../components/Dialogs';
+import type { AuthMode, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../../shared/desktop-api';
+import type { SettingsPage, SettingsPageHandle, SettingsPageId } from '../../components/Dialogs';
 import { Icon, Spinner } from '../../icons';
+import { aiDefaultLabel, invalidateModels, useModels } from '../ai/models';
+import { accountLines, CheckHead, type CheckState, InlineMsg, ModelSection, Note, OkChip, OnOffCard, ProxyRow, Radio } from '../ai/parts';
+import { AiBadge, shownState } from '../ai/providers';
 import { errText } from '../bridge';
 import { type DeskApp, useDesk } from '../ctx';
 import { msg } from '../messages';
 import { STATE_LABEL, StatusDot } from './ClaudeButton';
-import { Avatar } from './items';
-import { invalidateModels, modelOptions, useModels } from './models';
-import { hm, nowIso, ymdhm } from './util';
+import { nowIso } from './util';
 import './claude.css';
 
 type Provider = 'bedrock' | 'vertex' | 'foundry';
@@ -43,86 +44,43 @@ const CLOUD: Record<Provider, { label: string; flag: string; fields: { key: stri
   },
 };
 
-const BAD_CMD = /[;&|<>`]|\$\(/;
-
+/** 저장할 값 (셸 허용 목록은 AI 공통에서 따로 저장하므로 보내지 않음) */
 function toInput(c: ClaudeConfig): ClaudeConfigInput {
-  const { hasApiKey: _h, ...rest } = c;
+  const { hasApiKey: _h, shellAllow: _s, ...rest } = c;
   return rest;
 }
 
 /** 저장할 변경이 있는지 견줄 값 (키 순서·빈 값 차이는 무시) */
 function fingerprint(c: ClaudeConfigInput): string {
   const cloud = c.authMode === 'cloud' && c.cloud ? { provider: c.cloud.provider, env: Object.fromEntries(Object.entries(c.cloud.env ?? {}).sort(([a], [b]) => a.localeCompare(b))) } : null;
-  return JSON.stringify([c.authMode, cloud, c.proxy || '', c.shellAllow ?? [], !!c.aiSummary, c.model || '']);
+  return JSON.stringify([c.authMode, cloud, c.proxy || '', !!c.aiSummary, c.model || '']);
 }
 
-const PLAN: Record<string, string> = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise', free: 'Free' };
-
-/** 지금 계정 표시: 첫 줄(이메일) · 둘째 줄(조직 · 구독) */
-export function accountLines(a: ClaudeAccount | undefined): { main: string; sub: string } | null {
-  if (!a || (!a.email && !a.organization)) return null;
-  const plan = a.subscription ? `${PLAN[a.subscription.toLowerCase()] ?? a.subscription} 구독` : '';
-  return { main: a.email ?? a.organization!, sub: [a.email ? a.organization : '', plan].filter(Boolean).join(' · ') };
-}
-
-/** 설정 창 왼쪽 칸의 [Claude 연결] (데스크톱) */
+/** 설정 창 왼쪽 칸의 [Claude] (데스크톱) */
 export function claudeSettingsPage(app: DeskApp): SettingsPage {
   const on = !!app.claudeConfig?.enabled;
-  const st = app.claude?.state;
+  const st = shownState(app, 'claude');
   return {
     id: 'claude',
-    label: 'Claude 연결',
-    icon: <Avatar size={20} />,
+    label: 'Claude',
+    group: 'AI 연결',
+    icon: <AiBadge provider="claude" size={20} />,
     hint: (
       <>
-        <StatusDot state={on ? st : 'off'} size={7} />
-        {on ? `켜짐 · ${st ? STATE_LABEL[st] : '확인 중'}` : '꺼짐'}
+        <StatusDot state={st} size={7} />
+        {on ? `켜짐 · ${st ? STATE_LABEL[st] : '확인 중'}` : st === 'missing' ? 'CLI 없음' : '꺼짐'}
       </>
     ),
-    render: ({ handle, done }) => <ClaudeSettings handle={handle} onDone={done} />,
+    render: ({ handle, done, go }) => <ClaudeSettings handle={handle} onDone={done} go={go} />,
   };
 }
-
-type CheckState = 'ok' | 'fail' | 'wait';
 
 /** Claude Code 로그인을 골랐는데 실제로는 다른 인증(API 키 환경 변수 등)을 쓰고 있으면 그 이름 */
 function otherAuthLabel(s: ClaudeStatus | null): string | null {
   return s?.authLabel && !/로그인/.test(s.authLabel) ? s.authLabel : null;
 }
 
-function OkChip(props: { label: string; value: string; state: CheckState; running?: boolean }) {
-  const cls = props.state === 'fail' ? ' fail' : props.state === 'wait' ? ' wait' : '';
-  return (
-    <span class={`cp-ok${cls}`}>
-      <span class="c">
-        {props.running ? (
-          <Spinner size={11} />
-        ) : props.state === 'ok' ? (
-          <Icon name="check" size={11} color="var(--ok)" sw={2.6} />
-        ) : props.state === 'fail' ? (
-          <Icon name="close" size={10} color="var(--err)" sw={2.6} />
-        ) : (
-          <Icon name="clock" size={11} color="var(--faint)" sw={2.2} />
-        )}
-      </span>
-      <b>{props.label}</b>
-      {props.value}
-    </span>
-  );
-}
-
-function Radio(props: { on: boolean; label: string; help: string; onPick: () => void }) {
-  return (
-    <label class={`cp-radio${props.on ? ' on' : ''}`}>
-      <input type="radio" name="cp-auth" checked={props.on} onChange={props.onPick} />
-      <span class="o" />
-      <span class="l">{props.label}</span>
-      <span class="h">{props.help}</span>
-    </label>
-  );
-}
-
-export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | null }; onDone: (toast: string) => void }) {
+export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | null }; onDone: (toast: string) => void; go?: (id: SettingsPageId) => void }) {
   const app = useDesk();
   const [cfg, setCfg] = useState<ClaudeConfig | null>(app.claudeConfig);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -138,22 +96,18 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
   const [provider, setProvider] = useState<Provider>(app.claudeConfig?.cloud?.provider ?? 'bedrock');
   const [cloudEnv, setCloudEnv] = useState<Record<string, string>>(app.claudeConfig?.cloud?.env ?? {});
   const [proxy, setProxy] = useState(app.claudeConfig?.proxy ?? '');
-  const [shell, setShell] = useState<string[]>(app.claudeConfig?.shellAllow ?? []);
   const [aiSummary, setAiSummary] = useState(app.claudeConfig?.aiSummary ?? false);
   const [model, setModel] = useState(app.claudeConfig?.model ?? '');
   /** 목록에 없는 모델 이름을 직접 입력하는 중 */
   const [customModel, setCustomModel] = useState(false);
-  const [adding, setAdding] = useState<string | null>(null);
-  const [addErr, setAddErr] = useState<string | null>(null);
   const loaded = useRef(false);
-  const models = useModels(app);
+  const models = useModels(app, 'claude');
 
   const initFrom = (c: ClaudeConfig) => {
     setAuthMode(c.authMode);
     setProvider(c.cloud?.provider ?? 'bedrock');
     setCloudEnv(c.cloud?.env ?? {});
     setProxy(c.proxy ?? '');
-    setShell(c.shellAllow ?? []);
     setAiSummary(!!c.aiSummary);
     setModel(c.model ?? '');
   };
@@ -242,7 +196,6 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
       authMode,
       cloud: authMode === 'cloud' ? { provider, env } : base.cloud,
       proxy: proxy.trim() || undefined,
-      shellAllow: shell,
       aiSummary,
       model: model.trim() || undefined,
       ...patch,
@@ -265,7 +218,7 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
     try {
       const next = await app.desk.invoke('claude.config.set', buildInput(patch));
       // 인증·CLI가 바뀌면 쓸 수 있는 모델·계정도 달라질 수 있다
-      if (next.authMode !== cfg.authMode || next.cliPath !== cfg.cliPath || JSON.stringify(next.cloud) !== JSON.stringify(cfg.cloud) || !!apiKey.trim() || clearKey) invalidateModels();
+      if (next.authMode !== cfg.authMode || next.cliPath !== cfg.cliPath || JSON.stringify(next.cloud) !== JSON.stringify(cfg.cloud) || !!apiKey.trim() || clearKey) invalidateModels('claude');
       setCfg(next);
       setApiKey('');
       setClearKey(false);
@@ -329,26 +282,6 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
     }
   };
 
-  const addCmd = () => {
-    const v = (adding ?? '').trim().replace(/\s+/g, ' ');
-    if (!v) {
-      setAdding(null);
-      setAddErr(null);
-      return;
-    }
-    if (BAD_CMD.test(v)) {
-      setAddErr('명령 하나만 넣어 주세요 (; | & > ` 같은 기호 없이).');
-      return;
-    }
-    if (shell.includes(v)) {
-      setAddErr('이미 있는 명령입니다.');
-      return;
-    }
-    setShell((s) => [...s, v]);
-    setAdding(null);
-    setAddErr(null);
-  };
-
   const loginTag = authMode !== 'login' ? null : auth === 'ok' && !otherAuthLabel(status) ? <span class="tag ok">로그인됨</span> : st === 'login' ? <span class="tag err">로그인 필요</span> : <span class="tag neutral">확인 전</span>;
   const otherAuth = authMode === 'login' ? otherAuthLabel(status) : null;
 
@@ -389,8 +322,8 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
   return (
     <div class="cp-set">
       <div class="set-page-h">
-        <h3>Claude 연결</h3>
-        <span class="s">인터넷이 되는 PC에서만 씁니다. 분석 기능은 연결 없이도 모두 쓸 수 있습니다</span>
+        <h3>Claude</h3>
+        <span class="s">PC에 설치된 Claude Code로 대화합니다. 분석 기능은 연결 없이도 모두 쓸 수 있습니다</span>
       </div>
 
       {!cfg ? (
@@ -404,37 +337,19 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
       ) : (
         <>
           {/* 연동 켜기·끄기 */}
-          <div class={`cp-onoff${enabled ? ' on' : ''}`} role="group" aria-label="Claude 연동">
-            <Avatar size={30} />
-            <div class="t">
-              <div class="h">
-                <b>Claude 연동</b>
-                {enabled ? <span class="tag ok">켜짐</span> : <span class="tag neutral">꺼짐</span>}
-                {enabled && cfg.consentAt && <span class="at">{ymdhm(cfg.consentAt)} 동의</span>}
-              </div>
-              <div class="d">
-                {enabled
-                  ? '보내는 정보는 아래와 같고, 접속 정보 파일은 읽지 않습니다. [연동 끄기]는 이 앱에서만 Claude를 끄며 PC의 Claude Code 로그인은 그대로 둡니다.'
-                  : msg('MSG-14')}
-              </div>
-              {err && (
-                <div class="e" role="alert">
-                  {err}
-                </div>
-              )}
-            </div>
-            {enabled ? (
-              <button type="button" class="btn danger" onClick={turnOff} disabled={saving}>
-                {saving && <Spinner size={13} />}
-                연동 끄기
-              </button>
-            ) : (
-              <button type="button" class="btn primary" onClick={turnOn} disabled={!canEnable} title={whyNot || undefined}>
-                {saving && <Spinner size={13} color="#fff" />}
-                연동 켜기
-              </button>
-            )}
-          </div>
+          <OnOffCard
+            provider="claude"
+            enabled={enabled}
+            consentAt={cfg.consentAt}
+            offText={msg('MSG-14')}
+            onText="보내는 정보는 아래와 같고, 접속 정보 파일은 읽지 않습니다. [연동 끄기]는 이 앱에서만 Claude를 끄며 PC의 Claude Code 로그인은 그대로 둡니다."
+            err={err}
+            saving={saving}
+            canEnable={canEnable}
+            whyNot={whyNot}
+            onOn={turnOn}
+            onOff={turnOff}
+          />
 
           <div class="cp-set-cols">
             <div class="cp-dlg-col">
@@ -469,24 +384,13 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
                           터미널에서 로그인
                         </button>
                       </div>
-                      <span class="cp-lock-note cp-switch">
-                        <span class="ic">
-                          <Icon name="refresh" size={12} color="var(--muted)" sw={1.9} />
-                        </span>
-                        <span>
-                          <b>다른 계정으로 바꾸기</b> [터미널에서 로그인] → 열린 창에 <code>/login</code> → 브라우저에서 로그인 → 여기서 [다시 확인]. 로그아웃은{' '}
-                          <code>/logout</code>
-                        </span>
-                      </span>
-                      <span class="cp-lock-note">
-                        <span class="ic">
-                          <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
-                        </span>
-                        <span>
-                          로그인은 Claude Code 자체 화면(브라우저)에서 합니다. 앱은 로그인 정보를 저장하지 않고 계정 이름만 받아 보여 줍니다
-                          {otherAuth && ` · 지금은 ${otherAuth}을(를) 씁니다(환경 변수가 로그인보다 우선)`}
-                        </span>
-                      </span>
+                      <Note icon="refresh" class="cp-switch">
+                        <b>다른 계정으로 바꾸기</b> [터미널에서 로그인] → 열린 창에 <code>/login</code> → 브라우저에서 로그인 → 여기서 [다시 확인]. 로그아웃은 <code>/logout</code>
+                      </Note>
+                      <Note>
+                        로그인은 Claude Code 자체 화면(브라우저)에서 합니다. 앱은 로그인 정보를 저장하지 않고 계정 이름만 받아 보여 줍니다
+                        {otherAuth && ` · 지금은 ${otherAuth}을(를) 씁니다(환경 변수가 로그인보다 우선)`}
+                      </Note>
                     </>
                   )}
                   <Radio on={authMode === 'apikey'} label="API 키" help="Console 발급 키, 회사 발급 키 가능 · Windows 사용자 계정으로 암호화해 저장" onPick={() => setAuthMode('apikey')} />
@@ -516,12 +420,7 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
                             </button>
                           ))}
                       </div>
-                      <span class="cp-lock-note" style={{ marginLeft: 0 }}>
-                        <span class="ic">
-                          <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
-                        </span>
-                        <span>저장한 키는 다시 보여 주지 않고 Claude를 실행할 때만 환경 변수로 넘깁니다(로그인보다 우선). 회사 발급 키의 요금은 키 소유자에게 청구됩니다</span>
-                      </span>
+                      <Note flush>저장한 키는 다시 보여 주지 않고 Claude를 실행할 때만 환경 변수로 넘깁니다(로그인보다 우선). 회사 발급 키의 요금은 키 소유자에게 청구됩니다</Note>
                     </div>
                   )}
                   <Radio on={authMode === 'cloud'} label="회사 클라우드" help="Amazon Bedrock · Google Cloud · Microsoft Foundry" onPick={() => setAuthMode('cloud')} />
@@ -553,12 +452,7 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
                           />
                         </div>
                       ))}
-                      <span class="cp-lock-note" style={{ marginLeft: 0 }}>
-                        <span class="ic">
-                          <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
-                        </span>
-                        <span>키·비밀 값은 넣지 않습니다. PC의 AWS 로그인(aws sso login)·gcloud 로그인·Azure 로그인(az login)을 그대로 씁니다</span>
-                      </span>
+                      <Note flush>키·비밀 값은 넣지 않습니다. PC의 AWS 로그인(aws sso login)·gcloud 로그인·Azure 로그인(az login)을 그대로 씁니다</Note>
                     </div>
                   )}
                 </div>
@@ -567,14 +461,7 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
 
               {/* 2. 연결 확인 */}
               <section class="cp-sec" aria-label="연결 확인">
-                <div class="cp-sec-h">
-                  <h4>연결 확인</h4>
-                  {status?.checkedAt && checked && !checking && <span class="at">{hm(status.checkedAt)} 확인</span>}
-                  <button type="button" class="btn cp-b28" onClick={() => void recheckAll()} disabled={checking} style={{ fontSize: '12.5px' }} title="CLI·인터넷·인증과 지금 계정을 다시 확인합니다">
-                    {checking ? <Spinner size={13} /> : <Icon name="refresh" size={14} color="var(--ink2)" />}
-                    다시 확인
-                  </button>
-                </div>
+                <CheckHead status={status} shown={checked} checking={checking} onRecheck={() => void recheckAll()} title="CLI·인터넷·인증과 지금 계정을 다시 확인합니다" />
                 <div class="cp-okchips">
                   <OkChip label="CLI" value={cli === 'ok' ? status?.version ?? '' : cli === 'fail' ? '찾지 못함' : '확인 전'} state={cli} running={checking} />
                   <OkChip label="인터넷" value={net === 'ok' ? (usingProxy ? '프록시 사용' : '연결됨') : net === 'fail' ? '연결 안 됨' : '확인 전'} state={net} running={checking} />
@@ -587,75 +474,24 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
                   </button>
                 </div>
                 {failBox}
-                <div class="cp-field-row">
-                  <label for="cp-proxy" title="HTTPS_PROXY">사내 프록시</label>
-                  <input
-                    id="cp-proxy"
-                    class="inp mono"
-                    placeholder="비우면 PC 설정 (예: http://proxy:8080)"
-                    value={proxy}
-                    spellcheck={false}
-                    onInput={(e) => setProxy((e.target as HTMLInputElement).value)}
-                  />
-                </div>
+                <ProxyRow id="cp-proxy" value={proxy} onInput={setProxy} />
               </section>
               <div class="cp-dlg-hsep" />
 
               {/* 모델 */}
-              <section class="cp-sec" aria-label="모델">
-                <div class="cp-sec-h">
-                  <h4>모델</h4>
-                  <button type="button" class="btn cp-b28" onClick={() => void models.refresh()} disabled={models.loading} style={{ fontSize: '12.5px' }} title="PC의 Claude Code에서 모델 목록을 다시 받습니다">
-                    {models.loading ? <Spinner size={13} /> : <Icon name="refresh" size={14} color="var(--ink2)" />}
-                    목록 새로고침
-                  </button>
-                </div>
-                <div class="cp-field-row">
-                  <label for="cp-model">기본 모델</label>
-                  <select
-                    id="cp-model"
-                    class="inp"
-                    value={customModel ? '__custom__' : model}
-                    onChange={(e) => {
-                      const v = (e.target as HTMLSelectElement).value;
-                      if (v === '__custom__') setCustomModel(true);
-                      else {
-                        setCustomModel(false);
-                        setModel(v);
-                      }
-                    }}
-                  >
-                    {modelOptions(models.list, model, models.list?.defaultName ? `Claude Code 기본값 (${models.list.defaultName})` : 'Claude Code 기본값').map((o) => (
-                      <option key={o.value} value={o.value} title={o.title}>
-                        {o.label}
-                      </option>
-                    ))}
-                    <option value="__custom__">직접 입력…</option>
-                  </select>
-                </div>
-                {customModel && (
-                  <div class="cp-field-row">
-                    <label for="cp-model-custom">모델 이름</label>
-                    <input
-                      id="cp-model-custom"
-                      class="inp mono"
-                      placeholder="예: 회사 클라우드의 모델 ID"
-                      value={model}
-                      spellcheck={false}
-                      onInput={(e) => setModel((e.target as HTMLInputElement).value)}
-                    />
-                  </div>
-                )}
-                <span class="cp-lock-note" style={{ marginLeft: 0 }}>
-                  <span class="ic">
-                    <Icon name="info" size={12} color="var(--muted)" sw={1.9} />
-                  </span>
-                  <span>
-                    새 대화에 쓰는 모델입니다. 대화 중에는 입력창 아래에서 바꿀 수 있습니다. 목록은 이 PC의 Claude Code가 알려 준 모델입니다
-                    {models.list?.error ? ` · ${models.list.error}` : ''}
-                  </span>
-                </span>
-              </section>
+              <ModelSection
+                provider="claude"
+                list={models.list}
+                loading={models.loading}
+                onRefresh={() => void models.refresh()}
+                model={model}
+                custom={customModel}
+                setModel={setModel}
+                setCustom={setCustomModel}
+                defaultLabel={aiDefaultLabel('claude', models.list)}
+                refreshTitle="PC의 Claude Code에서 모델 목록을 다시 받습니다"
+                note="목록은 이 PC의 Claude Code가 알려 준 모델입니다. 새 대화에 쓰고, 대화 중에는 입력란 아래에서 바꿉니다."
+              />
               <div class="cp-dlg-hsep" />
 
               {/* 5. AI 요약 */}
@@ -708,76 +544,19 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
               </section>
               <div class="cp-dlg-hsep" />
 
-              {/* 4. 기본 권한 */}
+              {/* 기본 권한은 AI 공통에서 (모든 AI가 같은 규칙) */}
               <section class="cp-sec" aria-label="기본 권한">
                 <div class="cp-sec-h">
                   <h4>기본 권한</h4>
                 </div>
-                <div class="cp-perm">
-                  <div class="cp-prow">
-                    <span class="k">시작 모드</span>
-                    <div class="v">
-                      <span class="mode">
-                        <Icon name="lock" size={13} color="var(--muted)" sw={1.9} />
-                        계획 모드
-                      </span>
-                      <span>항상 계획 모드로 시작, 대화에서 수정 허용으로 바꿈</span>
-                    </div>
-                  </div>
-                  <div class="cp-prow">
-                    <span class="k">파일 수정</span>
-                    <div class="v">작업 사본에서만 · 원본 반영은 변경 검토에서 [적용]할 때만 · 새 프로젝트는 빈 폴더에 바로 생성</div>
-                  </div>
-                  <div class="cp-prow">
-                    <span class="k">쿼리</span>
-                    <div class="v">SELECT만 바로 실행(운영은 항상 확인) · 그 외는 사용자가 확인한 뒤 실행 · DB 연결은 프로젝트 연결에서</div>
-                  </div>
-                  <div class="cp-prow top">
-                    <span class="k">셸 명령</span>
-                    <div class="v">
-                      <span style={{ width: '100%' }}>{shell.length ? '허용 목록만 실행하고, 실행할 때마다 확인' : '허용 목록이 비어 있어 셸 명령을 실행하지 않음'}</span>
-                      <span style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {shell.map((c) => (
-                          <span class="cp-rchip" key={c}>
-                            {c}
-                            <button type="button" aria-label={`${c} 빼기`} onClick={() => setShell((s) => s.filter((x) => x !== c))}>
-                              <Icon name="close" size={12} sw={2} />
-                            </button>
-                          </span>
-                        ))}
-                        {adding === null ? (
-                          <button type="button" class="cp-addchip" onClick={() => setAdding('')}>
-                            <Icon name="plus" size={13} color="var(--ink2)" sw={2} />
-                            추가
-                          </button>
-                        ) : (
-                          <input
-                            class="cp-addinp"
-                            aria-label="허용할 명령"
-                            placeholder="예: mvn -q test (Enter)"
-                            value={adding}
-                            ref={(el) => el && setTimeout(() => el.focus(), 0)}
-                            onInput={(e) => {
-                              setAdding((e.target as HTMLInputElement).value);
-                              setAddErr(null);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.isComposing) {
-                                e.preventDefault();
-                                addCmd();
-                              } else if (e.key === 'Escape') {
-                                e.stopPropagation();
-                                setAdding(null);
-                                setAddErr(null);
-                              }
-                            }}
-                            onBlur={() => !(adding ?? '').trim() && setAdding(null)}
-                          />
-                        )}
-                      </span>
-                      {addErr && <span class="err-text" style={{ width: '100%' }}>{addErr}</span>}
-                    </div>
-                  </div>
+                <div class="ai-pointer">
+                  <Icon name="lock" size={14} color="var(--muted)" sw={1.9} />
+                  <span>시작 모드·파일 수정·쿼리·셸 명령 허용 목록은 모든 AI에 같게 적용합니다.</span>
+                  {props.go && (
+                    <button type="button" class="cp-linkbtn" onClick={() => props.go?.('ai')}>
+                      AI 공통에서 보기 →
+                    </button>
+                  )}
                 </div>
               </section>
             </div>
@@ -787,20 +566,3 @@ export function ClaudeSettings(props: { handle: { current: SettingsPageHandle | 
     </div>
   );
 }
-
-function InlineMsg(props: { text: string; detail?: string; info?: boolean; buttons: { label: string; primary?: boolean; run: () => void }[] }) {
-  return (
-    <div class={`cp-inline-err${props.info ? ' info' : ''}`} role={props.info ? 'status' : 'alert'}>
-      <span>{props.text}</span>
-      {props.detail && props.detail !== props.text && <span style={{ fontSize: '12px', opacity: 0.85 }}>{props.detail}</span>}
-      <div class="btns">
-        {props.buttons.map((b) => (
-          <button type="button" key={b.label} class={`btn sm${b.primary ? ' primary' : ''}`} onClick={b.run}>
-            {b.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-

@@ -5,12 +5,17 @@ import { msg } from '../../ui/desktop/messages';
 import { need } from '../services';
 import { canCommit, type CommitFile, detectVcs } from '../vcs/index';
 
-export const CLAUDE_MARK = 'Claude가 작성한 변경';
+/** 커밋 메시지에 붙이는 표시: 'Claude가 작성한 변경' · 'Gemini가 …' · 'ChatGPT가 …' */
+export function aiMark(ai: string): string {
+  return `${ai}가 작성한 변경`;
+}
 
-/** 커밋 메시지: 첫 줄 '제목 (Claude가 작성한 변경)', 다음 줄부터 변경 이유 */
-export function commitMessage(title: string, reason?: string): { subject: string; full: string } {
+const ANY_MARK = /(?:Claude|Gemini|ChatGPT|AI)가 작성한 변경/;
+
+/** 커밋 메시지: 첫 줄 '제목 (Claude가 작성한 변경)', 다음 줄부터 변경 이유. ai: 변경을 만든 AI 이름 (예전 기록은 Claude) */
+export function commitMessage(title: string, reason?: string, ai = 'Claude'): { subject: string; full: string } {
   const t = title.replace(/\s+/g, ' ').trim() || '코드 수정';
-  const subject = t.includes(CLAUDE_MARK) ? t : `${t} (${CLAUDE_MARK})`;
+  const subject = ANY_MARK.test(t) ? t : `${t} (${aiMark(ai)})`;
   const body = (reason ?? '').trim();
   return { subject, full: body && body !== t ? `${subject}\n\n${body}\n` : `${subject}\n` };
 }

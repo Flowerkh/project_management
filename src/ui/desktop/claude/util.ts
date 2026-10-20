@@ -59,7 +59,7 @@ export function chipKey(c: Pick<Chip, 'kind' | 'label'>): string {
 
 const ADD_RE = /<맥락-추가 이름="([^"]*)" 종류="(\w+)">\n?([\s\S]*?)\n?<\/맥락-추가>/g;
 const DEL_RE = /<맥락-빼기 이름="([^"]*)" 종류="(\w+)"\s*\/>/g;
-const KINDS = new Set(['screen', 'table', 'menu', 'batch', 'file', 'flow', 'summary']);
+const KINDS = new Set(['screen', 'table', 'menu', 'batch', 'file', 'flow', 'summary', 'conversation']);
 
 const attr = (s: string) => s.replace(/"/g, '＂').replace(/[<>]/g, ' ');
 

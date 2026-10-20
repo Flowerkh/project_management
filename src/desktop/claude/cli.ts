@@ -84,17 +84,17 @@ function isFile(p: string): boolean {
  * npm 실행 스크립트(claude.cmd·claude.ps1·sh)에서 실제 대상(cli.js 또는 실행 파일)을 찾는다.
  * cmd: "%dp0%\node_modules\@anthropic-ai\claude-code\cli.js"  ps1·sh: "$basedir/node_modules/@anthropic-ai/claude-code/cli.js"
  */
-export function parseShim(text: string): { rel: string; nodeNextToShim: boolean } | null {
+export function parseShim(text: string, name = 'claude'): { rel: string; nodeNextToShim: boolean } | null {
   const cands: string[] = [];
   for (const m of text.matchAll(/"%~?dp0%?\\([^"%]+)"/gi)) cands.push(m[1]);
   for (const m of text.matchAll(/"\$basedir[\\/]([^"$]+)"/g)) cands.push(m[1]);
-  const target = cands.find((c) => !/^node(\.exe)?$/i.test(c) && !/^node\$exe$/i.test(c) && /claude/i.test(c));
+  const target = cands.find((c) => !/^node(\.exe)?$/i.test(c) && !/^node\$exe$/i.test(c) && c.toLowerCase().includes(name));
   if (!target) return null;
   return { rel: target.replace(/\\/g, '/'), nodeNextToShim: /%~?dp0%?\\node\.exe|\$basedir[\\/]node\$exe/i.test(text) };
 }
 
-/** 실행 스크립트·심볼릭 링크·cli.js를 실제 실행 대상으로 */
-export function resolveTarget(p: string, source: CliSource, platform: NodeJS.Platform = process.platform): CliTarget | null {
+/** 실행 스크립트·심볼릭 링크·cli.js를 실제 실행 대상으로 (name: 스크립트 안에서 찾을 패키지 이름 — claude·codex) */
+export function resolveTarget(p: string, source: CliSource, platform: NodeJS.Platform = process.platform, name = 'claude'): CliTarget | null {
   if (!isFile(p)) return null;
   const lower = p.toLowerCase();
   if (/\.(c?js|mjs)$/.test(lower)) return { display: p, exec: p, node: 'node', source };
@@ -111,15 +111,15 @@ export function resolveTarget(p: string, source: CliSource, platform: NodeJS.Pla
     if (platform === 'win32' && !lower.endsWith('.exe')) {
       // 확장자 없는 npm sh 스크립트 (Git Bash용) → 같은 폴더의 claude.cmd가 따로 있으므로 건너뜀
       const head = readHead(p);
-      if (head.startsWith('#!')) return shimTarget(p, head, source, platform);
+      if (head.startsWith('#!')) return shimTarget(p, head, source, platform, name);
     }
     if (platform !== 'win32') {
       const head = readHead(p);
-      if (head.startsWith('#!') && /basedir/.test(head) && /node_modules/.test(head)) return shimTarget(p, head, source, platform) ?? { display: p, exec: real, source };
+      if (head.startsWith('#!') && /basedir/.test(head) && /node_modules/.test(head)) return shimTarget(p, head, source, platform, name) ?? { display: p, exec: real, source };
     }
     return { display: p, exec: real, source };
   }
-  return shimTarget(p, readHead(p, 16384), source, platform);
+  return shimTarget(p, readHead(p, 16384), source, platform, name);
 }
 
 function readHead(p: string, n = 4096): string {
@@ -137,8 +137,8 @@ function readHead(p: string, n = 4096): string {
   }
 }
 
-function shimTarget(shim: string, text: string, source: CliSource, platform: NodeJS.Platform): CliTarget | null {
-  const s = parseShim(text);
+function shimTarget(shim: string, text: string, source: CliSource, platform: NodeJS.Platform, name: string): CliTarget | null {
+  const s = parseShim(text, name);
   if (!s) return null;
   const dir = path.dirname(shim);
   const target = path.resolve(dir, ...s.rel.split('/'));
@@ -150,8 +150,8 @@ function shimTarget(shim: string, text: string, source: CliSource, platform: Nod
   return { display: shim, exec: target, source };
 }
 
-/** PATH에서 claude 찾기 (Windows `where claude`와 같은 순서: PATH 폴더마다 PATHEXT 확장자) */
-export function searchPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+/** PATH에서 claude(또는 name) 찾기 (Windows `where claude`와 같은 순서: PATH 폴더마다 PATHEXT 확장자) */
+export function searchPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, name = 'claude'): string[] {
   const pathVar = env.PATH ?? env.Path ?? env.path ?? '';
   const sep = platform === 'win32' ? ';' : ':';
   const dirs = pathVar.split(sep).map((d) => d.trim().replace(/^"|"$/g, '')).filter(Boolean);
@@ -159,7 +159,7 @@ export function searchPath(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): s
   const exts = platform === 'win32' ? ['.exe', '.cmd', '.ps1', '.bat'] : [''];
   for (const d of dirs) {
     for (const e of exts) {
-      const p = path.join(d, `claude${e}`);
+      const p = path.join(d, `${name}${e}`);
       if (isFile(p) && !out.includes(p)) out.push(p);
     }
   }

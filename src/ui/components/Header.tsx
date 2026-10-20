@@ -182,7 +182,7 @@ export function Header(props: {
           </button>
         )}
         {props.extras}
-        <button type="button" class="btn" onClick={props.onSettings} disabled={props.running} aria-label="설정" title="설정 (분석 · Claude 연결)">
+        <button type="button" class="btn" onClick={props.onSettings} disabled={props.running} aria-label="설정" title="설정 (분석 · AI 연결)">
           <Icon name="gear" size={16} />
           <span class="btn-t">설정</span>
         </button>

@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { ApplyRequest, ApplyResult, FileChange, WorkCopy } from '../../shared/desktop-api';
+import { AI_LABEL } from '../../shared/desktop-api';
+import { convProvider } from '../claude/conversations';
 import { isRedactable, isSecretFile, redactSecrets } from '../../shared/secrets';
 import { resolveInside, walkDir } from '../fsutil';
 import { DesktopError, emit, handle } from '../ipc';
@@ -427,7 +429,7 @@ async function apply(id: string, reqIn: ApplyRequest): Promise<ApplyResult> {
     files: filesArg(reqIn.files),
     commit: !!reqIn.commit,
     push: !!reqIn.push && !!reqIn.commit,
-    title: String(reqIn.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 200) || 'Claude가 고친 코드',
+    title: String(reqIn.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
     ...(typeof reqIn.message === 'string' ? { message: reqIn.message.slice(0, 4000) } : {}),
     ...(typeof reqIn.conversationId === 'string' ? { conversationId: reqIn.conversationId } : {}),
   };
@@ -480,9 +482,15 @@ async function apply(id: string, reqIn: ApplyRequest): Promise<ApplyResult> {
     const vcsOn = adapter.kind !== 'none';
     const wantCommit = req.commit && vcsOn;
     const wantPush = wantCommit && req.push && adapter.canPush;
+    // 변경을 만든 AI (커밋 표시 'Gemini가 작성한 변경'). 대화를 못 찾으면 예전처럼 Claude
+    const convId = req.conversationId ?? m.conversationId;
+    const provider = await convProvider(convId);
+    const ai = AI_LABEL[provider ?? 'claude'];
+    if (!req.title) req.title = `${ai}가 고친 코드`;
     await need('history').add(root, {
       id: historyId,
       kind: 'apply',
+      ...(provider ? { ai: provider } : {}),
       title: req.title,
       status: '적용됨',
       files: an.map((a) => ({ path: a.change.path, status: a.change.status, plus: a.change.plus, minus: a.change.minus })),
@@ -502,7 +510,7 @@ async function apply(id: string, reqIn: ApplyRequest): Promise<ApplyResult> {
         historyId,
         an.map((a) => ({ path: a.change.path, status: a.change.status })),
         { commit: true, push: wantPush },
-        commitMessage(req.title, req.message),
+        commitMessage(req.title, req.message, ai),
       );
       if (out.commit) result.commit = out.commit;
       if (out.push) result.push = out.push;

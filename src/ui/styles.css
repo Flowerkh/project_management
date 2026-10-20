@@ -384,6 +384,7 @@ body.rz-drag-x, body.rz-drag-x * { cursor: ew-resize !important; user-select: no
 .set-tab:hover { background: var(--surf2); }
 .set-tab.on { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), inset 3px 0 0 var(--acc); }
 .set-tab:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.set-group { flex: none; padding: 12px 10px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .set-tab .ic { flex: none; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
 .set-tab .tx { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .set-tab .l { font-size: 13.5px; font-weight: 600; }

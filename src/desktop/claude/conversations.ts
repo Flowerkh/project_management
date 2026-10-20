@@ -3,8 +3,8 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import type { ChatContext, ChatItem, Conversation, ConversationSummary } from '../../shared/desktop-api';
-import { ENV_LABEL } from '../../shared/desktop-api';
+import type { AiProvider, ChatContext, ChatItem, Conversation, ConversationSummary } from '../../shared/desktop-api';
+import { AI_LABEL, ENV_LABEL } from '../../shared/desktop-api';
 import { dataDir, projectDir, readJson, withLock, writeJson } from '../store';
 
 export interface StoredConversation extends Conversation {
@@ -18,6 +18,11 @@ export interface StoredConversation extends Conversation {
 }
 
 const ID_RE = /^c[a-z0-9]{6,40}$/;
+
+/** 대화의 AI (예전 대화는 provider가 없음 = Claude) */
+export function providerOf(c: { provider?: AiProvider }): AiProvider {
+  return c.provider === 'gemini' || c.provider === 'openai' ? c.provider : 'claude';
+}
 
 export function validId(id: unknown): id is string {
   return typeof id === 'string' && ID_RE.test(id);
@@ -64,6 +69,13 @@ export async function findConvFile(id: string): Promise<string | null> {
   return null;
 }
 
+/** 대화의 AI (대화를 찾지 못하면 undefined) — 적용한 변경의 커밋 표시('Gemini가 작성한 변경')에 씀 */
+export async function convProvider(id: unknown): Promise<AiProvider | undefined> {
+  if (!validId(id)) return undefined;
+  const c = await loadConv(id).catch(() => null);
+  return c ? providerOf(c) : undefined;
+}
+
 export async function loadConv(id: string): Promise<StoredConversation | null> {
   const f = await findConvFile(id);
   if (!f) return null;
@@ -94,7 +106,7 @@ export async function listConvs(root: string | null): Promise<ConversationSummar
     const c = await readJson<StoredConversation | null>(path.join(dir, n), null);
     if (!c || !validId(c.id)) continue;
     fileById.set(c.id, path.join(dir, n));
-    out.push({ id: c.id, kind: c.kind, title: c.title, updatedAt: c.updatedAt, mode: c.mode, items: Array.isArray(c.items) ? c.items.length : 0 });
+    out.push({ id: c.id, provider: providerOf(c), kind: c.kind, title: c.title, updatedAt: c.updatedAt, mode: c.mode, items: Array.isArray(c.items) ? c.items.length : 0 });
   }
   out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   return out;
@@ -104,6 +116,7 @@ export async function listConvs(root: string | null): Promise<ConversationSummar
 export function publicConv(c: StoredConversation, live?: { running: boolean; pending?: Conversation['pending'] }): Conversation {
   const out: Conversation = {
     id: c.id,
+    provider: providerOf(c),
     root: c.root,
     kind: c.kind,
     title: c.title,
@@ -120,6 +133,42 @@ export function publicConv(c: StoredConversation, live?: { running: boolean; pen
   if (c.context) out.context = c.context;
   if (live?.pending) out.pending = live.pending;
   return out;
+}
+
+// ------------------------------------------------------------------ 다른 AI로 새 대화: 이전 대화 글
+
+/**
+ * 이전 대화의 질문·답변 글만 (작업 내역·조회 결과·쿼리 카드·안내는 뺌). 길면 최근 것부터 max 글자 안으로.
+ * 비면 ''
+ */
+/** 질문 글에서 맥락 변경 블록을 뺌 */
+export function stripContextBlocks(text: string): string {
+  return text.replace(/<맥락-추가 [^>]*>[\s\S]*?<\/맥락-추가>/g, '').replace(/<맥락-빼기 [^>]*\/>/g, '').trim();
+}
+
+export function carryTranscript(c: Conversation, max: number): string {
+  const ai = AI_LABEL[providerOf(c)];
+  const blocks: string[] = [];
+  for (const it of c.items) {
+    // 질문과 함께 보낸 맥락 변경(<맥락-추가>·<맥락-빼기>)은 빼고 질문 글만 (맥락은 칩으로 따로 옮김)
+    const text = it.type === 'user' ? stripContextBlocks(it.text) : it.type === 'assistant' ? it.text.trim() : '';
+    if (!text) continue;
+    blocks.push(it.type === 'user' ? `[사용자] ${text}` : `[${ai}] ${text}`);
+  }
+  if (!blocks.length) return '';
+  const out: string[] = [];
+  let used = 0;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (used + b.length + 2 > max) {
+      if (!out.length) out.unshift(`${b.slice(0, Math.max(0, max - 12))}…(이하 생략)`);
+      else out.unshift(`…(앞의 대화 ${i + 1}개 생략)`);
+      break;
+    }
+    out.unshift(b);
+    used += b.length + 2;
+  }
+  return out.join('\n\n');
 }
 
 // ------------------------------------------------------------------ Markdown 내보내기 (F-21)
@@ -149,23 +198,25 @@ function contextLines(ctx: ChatContext | undefined): string[] {
 }
 
 export function toMarkdown(c: Conversation, projectLabel?: string): string {
+  const ai = AI_LABEL[providerOf(c)];
   const out: string[] = [];
-  out.push(`# ${c.title || 'Claude 대화'}`);
+  out.push(`# ${c.title || `${ai} 대화`}`);
   out.push('');
   out.push(`- 프로젝트: ${projectLabel ?? (c.root ? c.root : '원본 폴더 없음 (분석 결과 파일)')}`);
+  out.push(`- AI: ${ai}${c.activeModel || c.model ? ` (${c.activeModel || c.model})` : ''}`);
   out.push(`- 종류: ${c.kind === 'new' ? '새 프로젝트' : '이슈 처리'} · 시작 ${hm(c.createdAt)} · 마지막 ${hm(c.updatedAt)}`);
   out.push(...contextLines(c.context));
   out.push('');
-  for (const it of c.items) out.push(...itemMarkdown(it), '');
+  for (const it of c.items) out.push(...itemMarkdown(it, ai), '');
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
 
-function itemMarkdown(it: ChatItem): string[] {
+function itemMarkdown(it: ChatItem, ai: string): string[] {
   switch (it.type) {
     case 'user':
       return [`## 질문 · ${hm(it.at)}`, '', it.text];
     case 'assistant':
-      return [`## Claude · ${hm(it.at)}`, '', it.text];
+      return [`## ${ai} · ${hm(it.at)}`, '', it.text];
     case 'activity':
       return [quote(`작업 내역: ${it.summary}`), ...it.items.map((x) => `> - ${x.label}`)];
     case 'changes':
@@ -196,7 +247,8 @@ function queryStatus(s: string): string {
 
 /** 저장할 파일 이름 (Windows에서 못 쓰는 글자 제거) */
 export function exportFileName(c: Conversation): string {
-  const base = (c.title || 'Claude 대화').replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Claude 대화';
+  const fallback = `${AI_LABEL[providerOf(c)]} 대화`;
+  const base = (c.title || fallback).replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || fallback;
   const d = new Date(c.createdAt);
   const stamp = Number.isNaN(d.getTime()) ? '' : `-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   return `${base}${stamp}.md`;

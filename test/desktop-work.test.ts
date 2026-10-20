@@ -15,6 +15,8 @@ import { register as projectRegister } from '../src/desktop/project';
 import { services } from '../src/desktop/services';
 import { workDir } from '../src/desktop/store';
 import { register as vcsRegister } from '../src/desktop/vcs/index';
+import { convProvider, saveConv } from '../src/desktop/claude/conversations';
+import { commitMessage } from '../src/desktop/work/commit';
 import { cleanupOld, register as workRegister } from '../src/desktop/work/index';
 
 let tmp = '';
@@ -400,6 +402,44 @@ test('git: 커밋 실패(사용자 정보 없음) → 기록에 MSG-25 → 다�
   assert.ok((await call('history.list', root)).some((x) => x.kind === 'commit' && x.status === '커밋됨'), '다시 시도한 커밋도 기록');
   // 푸시는 원하지 않았으므로 더 할 것이 없음
   assert.equal((await call('history.retry', root, e.id))?.status, '커밋됨');
+});
+
+test('다른 AI의 변경: 커밋 표시·기록에 그 AI (Gemini가 작성한 변경), 다시 시도도 같게', async () => {
+  const root = newDir('gemini-change');
+  makeProject(root);
+  gitRepo(root, { identity: false });
+  gitCommitAll(root, 'init');
+  sh('git', ['config', 'user.useConfigOnly', 'true'], root);
+  // Gemini 대화 (대화 저장 파일만 — 실제 Gemini는 부르지 않음)
+  const convId = 'cgeminitest01';
+  const now = new Date().toISOString();
+  await saveConv({ id: convId, provider: 'gemini', root, kind: 'issue', title: '주문 이력', createdAt: now, updatedAt: now, mode: 'edit', items: [], running: false, cwd: root });
+  assert.equal(await convProvider(convId), 'gemini');
+  assert.equal(await convProvider('cnotfound01'), undefined, '없는 대화');
+  assert.equal(await convProvider('../x'), undefined, '잘못된 ID');
+  const wc = await call('work.create', root, convId);
+  fs.appendFileSync(path.join(wc.path, 'README.md'), 'Gemini가 고친 줄\n');
+  const res = await call('work.apply', wc.id, { files: ['README.md'], commit: true, push: false, title: '' });
+  assert.equal(res.ok, true);
+  assert.equal(res.commit?.ok, false, '사용자 정보가 없어 커밋 실패');
+  const e = await entry(root, res.historyId!);
+  assert.equal(e.ai, 'gemini', '기록에 변경을 만든 AI');
+  assert.equal(e.title, 'Gemini가 고친 코드', '제목이 없으면 그 AI 이름으로');
+  sh('git', ['config', 'user.name', 'Hong Gildong'], root);
+  sh('git', ['config', 'user.email', 'hong@example.com'], root);
+  const again = await call('history.retry', root, e.id);
+  assert.equal(again?.status, '커밋됨');
+  assert.equal(sh('git', ['log', '-1', '--format=%s'], root).trim(), 'Gemini가 고친 코드 (Gemini가 작성한 변경)');
+  const commitEntry = (await call('history.list', root)).find((x) => x.kind === 'commit');
+  assert.equal(commitEntry?.ai, 'gemini', '다시 시도한 커밋 기록에도');
+  // 되돌린 기록에도 그 변경을 만든 AI
+  const rv = await call('history.revert', root, e.id, { commit: false });
+  assert.equal(rv.ok, true, JSON.stringify(rv));
+  assert.equal((await entry(root, rv.historyId!)).ai, 'gemini');
+  // 이미 표시가 있는 제목은 그대로, 모르는 AI는 예전처럼 Claude
+  assert.equal(commitMessage('수정 (ChatGPT가 작성한 변경)', undefined, 'Gemini').subject, '수정 (ChatGPT가 작성한 변경)');
+  assert.equal(commitMessage('수정', undefined, 'ChatGPT').subject, '수정 (ChatGPT가 작성한 변경)');
+  assert.equal(commitMessage('수정').subject, '수정 (Claude가 작성한 변경)');
 });
 
 test('svn: 사본 → 적용 → 커밋(서버 반영), 새 폴더·지운 파일 포함', async () => {

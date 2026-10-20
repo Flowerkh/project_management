@@ -1,33 +1,51 @@
-// SCR-09 Claude 대화 패널: 머리글(제목·연결 상태·대화 기록·내보내기·새 대화·닫기), 맥락 칩, 대화, 입력·모드.
-// 대화는 메인 프로세스(claude.*)가 실행하고 화면은 이벤트로 받은 항목을 그린다. 첫 질문을 보낼 때 대화를 시작한다(claude.start).
+// SCR-09 AI 대화 패널: 머리글(제목·연결 상태·대화 기록·내보내기·새 대화·설정·닫기), 맥락 칩, 대화, 입력·모드·AI·모델.
+// 대화는 메인 프로세스(claude.*)가 그 대화의 AI(Claude·Gemini·ChatGPT)로 실행하고 화면은 이벤트로 받은 항목을 그린다.
+// 첫 질문을 보낼 때 대화를 시작한다(claude.start). 대화 중 AI는 바뀌지 않는다 — 다른 AI는 새 대화로(지금 대화를 맥락으로 붙일 수 있음).
 import { createPortal } from 'preact/compat';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { ChatContext, ClaudeErrorCode, ConversationSummary } from '../../../shared/desktop-api';
+import { AI_LABEL, AI_PROVIDERS, type AiProvider, type ChatContext, type ClaudeErrorCode, type Conversation, type ConversationSummary } from '../../../shared/desktop-api';
 import { ConfirmDialog } from '../../components/Dialogs';
 import { ModalSizer } from '../../components/ModalSizer';
 import { Icon, Spinner } from '../../icons';
 import type { Target } from '../../model';
+import { AiPicker, SwitchDialog } from '../ai/AiPicker';
+import { connDefault, pickedName, pickedValue, pickRows, useModels } from '../ai/models';
+import { AiBadge, chatProvider, providerBlocked, providerEnabled, providerMsg, providerStatus, sendTarget, shownState } from '../ai/providers';
 import { errText } from '../bridge';
 import { type ChatRequest, type DeskApp, useDesk } from '../ctx';
-import { msg } from '../messages';
 import { StatusDot } from './ClaudeButton';
 import { buildChatContext } from './context';
-import { Avatar, ChatLog, claudeErrActions, ErrorBox } from './items';
+import { aiErrActions, Avatar, ChatLog, ErrorBox } from './items';
 import { type LinkEnv } from './markdown';
-import { modelName, modelOptions, useModels } from './models';
 import { useConversation } from './useConversation';
-import { type Chip, chipKey, composeWithContext, convTitle, effectiveChips, hm } from './util';
+import { type Chip, chipKey, composeWithContext, convTitle, effectiveChips, hm, splitContextBlock } from './util';
 import './claude.css';
 
 /** 프로젝트마다 마지막으로 연 대화 (패널을 닫았다 열면 이어서) */
 const lastConvByRoot = new Map<string, string>();
 
-const CHIP_ICON: Record<Chip['kind'], string> = { screen: 'screen', table: 'table', menu: 'menu', batch: 'clock', file: 'file', flow: 'arrow_r', summary: 'layers' };
+const CHIP_ICON: Record<Chip['kind'], string> = { screen: 'screen', table: 'table', menu: 'menu', batch: 'clock', file: 'file', flow: 'arrow_r', summary: 'layers', conversation: 'chat' };
 
 /** 패널 맨 위 배너로 보이는 오류 (MSG-23 사용 한도 · MSG-30 결제 문제: 화면설계서 표시 방식 '배너') */
 const BANNER_CODES: ClaudeErrorCode[] = ['limit', 'billing'];
 
-const STATE_TEXT: Record<string, string> = { on: 'Claude 연결됨', login: '인증 필요', offline: '오프라인', off: '꺼짐', missing: '설치 안 됨' };
+const STATE_TEXT: Record<string, string> = { login: '인증 필요', offline: '오프라인', off: '꺼짐', missing: '설치 안 됨' };
+
+/** 보내는 곳 + 조사 (Anthropic으로 · OpenAI로) */
+function withRo(target: string): string {
+  return /(Anthropic|Bedrock)$/.test(target) ? `${target}으로` : `${target}로`;
+}
+
+/** 다른 AI로 옮길 때 맥락 칩에 보일 지금 대화 (실제로 보내는 글은 메인이 대화 기록에서 만든다) */
+function carryPreview(c: Conversation): string {
+  const ai = AI_LABEL[c.provider ?? 'claude'];
+  const out: string[] = [];
+  for (const it of c.items) {
+    if (it.type === 'user') out.push(`[사용자] ${splitContextBlock(it.text).text.trim()}`);
+    else if (it.type === 'assistant' && it.text.trim()) out.push(`[${ai}] ${it.text.trim()}`);
+  }
+  return out.join('\n\n');
+}
 
 /** 받침에 맞는 조사 (주문목록을 · 주문상세를) */
 function eul(word: string): string {
@@ -112,8 +130,17 @@ export function ClaudePanel(props: { onClose: () => void }) {
   /** 첫 질문을 보내 대화를 시작하는 동안 먼저 보여 줄 질문 */
   const [startingText, setStartingText] = useState<string | null>(null);
   const [dismissedErr, setDismissedErr] = useState<string | null>(null);
-  /** 첫 질문을 보내기 전에 고른 모델 (undefined = Claude 연결의 기본 모델) */
+  /** 첫 질문을 보내기 전에 고른 모델 (undefined = 그 AI 연결의 기본 모델) */
   const [draftModel, setDraftModel] = useState<string | undefined>(undefined);
+  /** 첫 질문을 보내기 전에 고른 AI (undefined = 기본 AI, 꺼져 있으면 켜진 AI) */
+  const [draftProvider, setDraftProvider] = useState<AiProvider | undefined>(undefined);
+  /** 다른 AI로 옮긴 새 대화: 이 대화의 질문·답변 글을 맥락으로 */
+  const [draftCarry, setDraftCarry] = useState<string | undefined>(undefined);
+  /** AI·모델 고르기 열림 */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  /** 다른 AI로 새 대화 확인 */
+  const [switchTo, setSwitchTo] = useState<AiProvider | null>(null);
+  const pickBtn = useRef<HTMLButtonElement>(null);
   /** 크게 보기 (패널을 가운데 큰 창으로) */
   const [expanded, setExpanded] = useState(false);
   /** 옆에 붙었을 때 너비 (null = 기본: 창 너비의 40%) */
@@ -153,9 +180,11 @@ export function ClaudePanel(props: { onClose: () => void }) {
     baseTarget.current = targetKey(app.target);
   };
 
-  const newDraft = (ctx?: ChatContext) => {
+  const newDraft = (ctx?: ChatContext, opts: { provider?: AiProvider; model?: string; carryFrom?: string } = {}) => {
     cv.clear();
-    setDraftModel(undefined);
+    setDraftModel(opts.model);
+    setDraftProvider(opts.provider);
+    setDraftCarry(opts.carryFrom);
     setDraft(ctx ?? buildChatContext(app.model, app.target));
     resetChips();
     forceBottom.current = true;
@@ -175,17 +204,28 @@ export function ClaudePanel(props: { onClose: () => void }) {
   /** 첫 질문: 대화를 만들고(작업 사본 준비는 work.progress로 보임) 보낸다 */
   const sendNew = async (text: string, ctx: ChatContext | undefined) => {
     setStartingText(text);
-    const opts = { ...(ctx && ctx.chips.length ? { context: ctx } : {}), ...(draftModel !== undefined ? { model: draftModel } : {}) };
-    const c = await cv.start(app.root, Object.keys(opts).length ? opts : undefined);
+    // 이전 대화 칩을 뺐으면 질문·답변 글은 옮기지 않는다
+    const carry = draftCarry && ctx?.chips.some((c) => c.kind === 'conversation') ? draftCarry : undefined;
+    const opts = {
+      provider,
+      ...(ctx && ctx.chips.length ? { context: ctx } : {}),
+      ...(draftModel !== undefined ? { model: draftModel } : {}),
+      ...(carry ? { carryFrom: carry } : {}),
+    };
+    const c = await cv.start(app.root, opts);
     setStartingText(null);
     if (!c) return false;
     remember(c.id);
     setDraft(undefined);
+    setDraftCarry(undefined);
     return cv.send(text, c);
   };
 
-  const blocked = app.claude?.state === 'off' || app.claude?.state === 'missing';
-  const models = useModels(app, !blocked);
+  /** 이 대화의 AI: 시작한 대화는 그 대화의 AI, 시작 전에는 고른 AI(없으면 기본 AI) */
+  const provider: AiProvider = conv ? (conv.provider ?? 'claude') : (draftProvider ?? chatProvider(app));
+  const ai = AI_LABEL[provider];
+  const blocked = providerBlocked(app, provider);
+  const models = useModels(app, provider, !blocked);
   const running = !!conv?.running;
   const busy = cv.starting || cv.loading;
 
@@ -197,7 +237,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
       return;
     }
     if (blocked) {
-      app.openModal('claude');
+      app.openModal(provider);
       return;
     }
     setInput('');
@@ -216,7 +256,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
     if (!ok) setInput((cur) => cur || text);
   };
 
-  // 패널을 여는 요청 ([Claude에게 묻기]·대화 열기·상단 버튼)
+  // 패널을 여는 요청 ([AI에게 묻기]·대화 열기·상단 버튼)
   const handle = async (req: ChatRequest) => {
     setHistOpen(false);
     if (req.conversationId) {
@@ -238,7 +278,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
       focusInput();
       return;
     }
-    // 상단 [Claude]: 이 프로젝트에서 마지막으로 연 대화, 없으면 오늘 대화를 이어서. 그것도 없으면 새 대화
+    // 상단 [AI 대화]: 이 프로젝트에서 마지막으로 연 대화, 없으면 오늘 대화를 이어서. 그것도 없으면 새 대화
     const last = lastConvByRoot.get(rootKey);
     if (last) {
       if (await openConv(last)) return focusInput();
@@ -273,10 +313,43 @@ export function ClaudePanel(props: { onClose: () => void }) {
     void handle({ nonce: Date.now() });
   }, [rootKey]);
 
+  /** 다른 AI로: 시작 전이면 바로 바꾸고, 대화가 있으면 확인 창 */
+  const requestSwitch = (p: AiProvider) => {
+    setPickerOpen(false);
+    setHistOpen(false);
+    if (!conv || (!conv.items.length && !conv.running)) {
+      if (!conv) {
+        setDraftProvider(p);
+        setDraftModel(undefined);
+      } else newDraft({ title: convTitle(conv), chips: chips.filter((c) => c.kind !== 'conversation') }, { provider: p });
+      focusInput();
+      return;
+    }
+    setSwitchTo(p);
+  };
+
+  /** 확인 창의 [새 대화로 시작]: 지금 대화의 맥락(+ 질문·답변 글)을 붙인 새 대화 초안 */
+  const startSwitched = (to: AiProvider, o: { carry: boolean; model?: string }) => {
+    const from = conv;
+    setSwitchTo(null);
+    if (!from) return;
+    const keep = chips.filter((c) => c.kind !== 'conversation');
+    const carried: Chip[] = o.carry ? [{ kind: 'conversation', label: `이전 대화 (${AI_LABEL[from.provider ?? 'claude']})`, text: carryPreview(from) }] : [];
+    newDraft({ title: convTitle(from), chips: [...keep, ...carried] }, { provider: to, model: o.model, carryFrom: o.carry ? from.id : undefined });
+    setInput('');
+    resizeTa('');
+    focusInput();
+  };
+
   const deleteConv = async (id: string) => {
     try {
       await app.desk.invoke('claude.delete', id);
       if (lastConvByRoot.get(rootKey) === id) lastConvByRoot.delete(rootKey);
+      // 새 대화 초안에 '이전 대화'로 붙여 둔 대화를 지웠으면 그 맥락도 뺀다
+      if (draftCarry === id) {
+        setDraftCarry(undefined);
+        setDraft((d) => (d ? { ...d, chips: d.chips.filter((c) => c.kind !== 'conversation') } : d));
+      }
       if (conv?.id === id) {
         setInput('');
         resizeTa('');
@@ -393,7 +466,10 @@ export function ClaudePanel(props: { onClose: () => void }) {
     // 열린 창(쿼리 실행 확인·설정 등)이 있으면 그 창이 Esc를 받는다
     if ((e.target as HTMLElement | null)?.closest?.('.scrim, [aria-modal="true"]') || document.querySelector('.scrim')) return;
     e.stopPropagation();
-    if (histOpen) setHistOpen(false);
+    if (pickerOpen) {
+      setPickerOpen(false);
+      pickBtn.current?.focus();
+    } else if (histOpen) setHistOpen(false);
     else if (expanded) setExpanded(false);
     else props.onClose();
   };
@@ -463,29 +539,35 @@ export function ClaudePanel(props: { onClose: () => void }) {
     }
   };
 
-  const st = app.claude?.state;
+  const st = shownState(app, provider);
   const lastIt = conv?.items[conv.items.length - 1];
   const bannerErr = lastIt && lastIt.type === 'error' && BANNER_CODES.includes(lastIt.code) && lastIt.id !== dismissedErr ? lastIt : null;
   const mode = conv?.mode ?? 'plan';
   const canEdit = !!app.root && (!conv || conv.root !== null);
   const title = conv ? convTitle(conv) : draft?.title ? `${draft.title} · 새 대화` : '새 대화';
-  const effModel = (conv ? conv.model : draftModel) ?? app.claudeConfig?.model ?? '';
-  const effInfo = effModel ? models.list?.models.find((m) => m.value === effModel) : null;
+  // 모델: 대화(또는 초안)에 고른 값 → 그 AI 연결의 기본 모델 → '' (그 AI의 기본값)
+  const conn = connDefault(app, provider);
+  const effModel = (conv ? conv.model : draftModel) ?? conn ?? '';
+  const rows = pickRows(provider, models.list, conn, effModel || undefined);
+  const picked = pickedValue(provider, rows, models.list, effModel, conn);
+  const pickedRow = rows.find((r) => r.value === picked);
+  const chipName = provider === 'claude' && !picked ? '기본 모델' : pickedName(provider, models.list, picked, conn);
   const modelTitle = [
-    `모델: ${modelName(models.list, effModel)}`,
-    effModel ? effInfo?.description : models.list?.defaultDescription,
+    `${ai} · 모델: ${pickedRow?.name ?? chipName}`,
+    pickedRow?.description,
     conv?.activeModel ? `지금 쓰는 모델: ${conv.activeModel}` : '',
-    `바꾸면 ${running ? '다음 응답' : '다음 질문'}부터 적용됩니다`,
+    `모델을 바꾸면 ${running ? '다음 응답' : '다음 질문'}부터 적용됩니다 · 다른 AI는 새 대화로`,
   ]
     .filter(Boolean)
     .join('\n');
+  const otherOn = AI_PROVIDERS.find((p) => p !== provider && providerEnabled(app, p) && !providerBlocked(app, p));
 
   return (
     <>
     <aside
       ref={panelRef}
       class={`chat-panel cp-panel${expanded ? ' expanded' : ''}`}
-      aria-label="Claude 대화"
+      aria-label="AI 대화"
       onKeyDown={onPanelKey}
       style={!expanded && width ? { '--cp-w': `${width}px` } : undefined}
     >
@@ -505,14 +587,14 @@ export function ClaudePanel(props: { onClose: () => void }) {
         />
       )}
       <div class="cp-head">
-        <Avatar size={28} />
+        <Avatar size={28} provider={provider} />
         <div class="cp-head-t">
           <span class="cp-title" title={title}>
             {title}
           </span>
           <span class="cp-sub">
             <StatusDot state={st} />
-            <span>{st ? STATE_TEXT[st] : '연결 확인 중'}</span>
+            <span>{st === 'on' ? `${ai} 연결됨` : st ? `${ai} ${STATE_TEXT[st]}` : `${ai} 연결 확인 중`}</span>
             <span class="cp-sep">·</span>
             <span class="cp-proj">{app.projectName || '프로젝트'}</span>
             <span class="cp-sep">·</span>
@@ -563,11 +645,12 @@ export function ClaudePanel(props: { onClose: () => void }) {
           <button
             type="button"
             class="cp-ibtn"
-            aria-label="Claude 연결 설정"
-            title="Claude 연결 설정 (계정 바꾸기·기본 모델·연동 끄기)"
+            aria-label={`${ai} 연결 설정`}
+            title={`${ai} 연결 설정 (계정 바꾸기·기본 모델·연동 끄기)`}
             onClick={() => {
               setHistOpen(false);
-              app.openModal('claude');
+              setPickerOpen(false);
+              app.openModal(provider);
             }}
           >
             <Icon name="gear" size={17} color="var(--ink2)" />
@@ -629,14 +712,14 @@ export function ClaudePanel(props: { onClose: () => void }) {
           </button>
         </div>
       )}
-      {st && st !== 'on' && <StatusBanner app={app} />}
+      {st && st !== 'on' && <StatusBanner app={app} provider={provider} other={otherOn} onSwitch={requestSwitch} />}
       {bannerErr && (
         <div class="cp-top-banner">
           <ErrorBox
             indent={false}
-            text={msg(bannerErr.code === 'limit' ? 'MSG-23' : 'MSG-30')}
+            text={providerMsg(bannerErr.code === 'limit' ? 'MSG-23' : 'MSG-30', provider)}
             detail={bannerErr.message}
-            actions={claudeErrActions(app, bannerErr.code, bannerErr.message)}
+            actions={aiErrActions(app, provider, bannerErr.code, bannerErr.message)}
             onClose={() => setDismissedErr(bannerErr.id)}
           />
         </div>
@@ -647,7 +730,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
           <ErrorBox
             tone="info"
             indent={false}
-            text="원본 폴더 없이 연 결과라 Claude는 분석 결과만 보고 답합니다. 소스 수정([수정 진행]·수정 허용)은 폴더로 연 프로젝트에서만 할 수 있습니다."
+            text={`원본 폴더 없이 연 결과라 ${ai}는 분석 결과만 보고 답합니다. 소스 수정([수정 진행]·수정 허용)은 폴더로 연 프로젝트에서만 할 수 있습니다.`}
           />
         )}
         {cv.loading && (
@@ -659,7 +742,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
         {!cv.loading && !conv && !cv.starting && (
           <div class="cp-intro">
             <div class="cp-msg">
-              <Avatar size={24} />
+              <Avatar size={24} provider={provider} />
               <div class="cp-msg-body">
                 <p style={{ margin: 0 }}>
                   {draft?.title ? `「${draft.title}」에 대해 물어보세요.` : '무엇을 도와드릴까요?'} 위 맥락을 함께 보냅니다. 처음에는 계획 모드라 파일을 바꾸지 않고 원인과 수정안만 찾습니다.
@@ -699,7 +782,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
             <div class="cp-bubble local">{startingText}</div>
           </div>
         )}
-        {(cv.starting || cv.progress) && <WorkProgressLine progress={cv.progress} starting={cv.starting} />}
+        {(cv.starting || cv.progress) && <WorkProgressLine progress={cv.progress} starting={cv.starting} ai={ai} />}
         {cv.error && <ErrorBox indent={false} text={cv.error} actions={[{ label: '닫기', run: () => cv.setError(null) }]} />}
         {showJump && (
           <button
@@ -724,8 +807,8 @@ export function ClaudePanel(props: { onClose: () => void }) {
             ref={taRef}
             class="cp-ta"
             rows={1}
-            aria-label="Claude에게 보낼 내용"
-            placeholder={blocked ? 'Claude 연결을 켠 뒤 쓸 수 있습니다' : '질문하거나 작업을 요청하세요 (Enter 보내기 · Shift+Enter 줄바꿈)'}
+            aria-label={`${ai}에게 보낼 내용`}
+            placeholder={blocked ? `${ai} 연결을 켜거나 입력란 아래에서 다른 AI를 고른 뒤 쓸 수 있습니다` : '질문하거나 작업을 요청하세요 (Enter 보내기 · Shift+Enter 줄바꿈)'}
             value={input}
             disabled={blocked}
             onInput={(e) => {
@@ -751,24 +834,24 @@ export function ClaudePanel(props: { onClose: () => void }) {
               </button>
             </div>
             <span class="hint">{mode === 'edit' ? '작업 사본만 수정' : '읽기·수정안만'}</span>
-            <select
-              class="cp-model"
-              aria-label="모델"
-              value={effModel}
-              disabled={blocked}
-              title={modelTitle}
-              onChange={(e) => {
-                const v = (e.target as HTMLSelectElement).value;
-                if (conv) void cv.setModel(v);
-                else setDraftModel(v);
+            <button
+              ref={pickBtn}
+              type="button"
+              class={`cp-model-chip${pickerOpen ? ' on' : ''}`}
+              aria-label={`AI·모델: ${ai} · ${chipName}`}
+              aria-haspopup="menu"
+              aria-expanded={pickerOpen}
+              disabled={busy}
+              title={busy ? '대화를 준비하는 동안에는 바꿀 수 없습니다' : modelTitle}
+              onClick={() => {
+                setHistOpen(false);
+                setPickerOpen((v) => !v);
               }}
             >
-              {modelOptions(models.list, effModel, '기본 모델').map((o) => (
-                <option key={o.value} value={o.value} title={o.title}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              <AiBadge provider={provider} size={18} />
+              <span class="nm">{chipName}</span>
+              <Icon name="chev_down" size={13} color="var(--muted)" sw={2} />
+            </button>
             <span class="grow" />
             <span class="cnt" title={chips.map((c) => c.label).join(', ')}>
               맥락 {chips.length}개
@@ -787,19 +870,45 @@ export function ClaudePanel(props: { onClose: () => void }) {
         </div>
         <div class="cp-note">
           <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
-          <span>질문·붙인 분석 결과·읽은 소스 일부·조회 결과(개인정보 가림)가 Claude로 전송됨 · 접속 정보는 읽지 않음</span>
+          <span>질문·붙인 분석 결과·읽은 소스 일부·조회 결과(개인정보 가림)가 {withRo(sendTarget(app, provider))} 전송됨 · 접속 정보는 읽지 않음</span>
         </div>
+        {pickerOpen && (
+          <AiPicker
+            app={app}
+            provider={provider}
+            started={!!conv && (conv.items.length > 0 || conv.running)}
+            rows={rows}
+            picked={picked}
+            loading={models.loading}
+            error={models.list?.error}
+            blocked={blocked}
+            anchor={pickBtn}
+            onModel={(v) => {
+              if (conv) void cv.setModel(v);
+              else {
+                // 고른 모델은 이 AI의 것이므로 AI도 고정한다 (나중에 기본 AI가 바뀌어도 다른 AI에 이 모델을 보내지 않게)
+                setDraftProvider(provider);
+                setDraftModel(v);
+              }
+            }}
+            onSwitch={requestSwitch}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
       </div>
       {expanded && <ModalSizer id="chat-popup" center minWidth={560} sides />}
     </aside>
     {expanded && <div class="cp-backdrop" onMouseDown={() => setExpanded(false)} />}
+    {switchTo &&
+      conv &&
+      createPortal(<SwitchDialog app={app} from={provider} to={switchTo} onClose={() => setSwitchTo(null)} onStart={(o) => startSwitched(switchTo, o)} />, document.body)}
     {confirmDel &&
       createPortal(
         <ConfirmDialog
           title={confirmDel.kind === 'all' ? '이 프로젝트 대화 모두 지우기' : '대화 지우기'}
           message={
             confirmDel.kind === 'all'
-              ? `${app.projectName || '이 프로젝트'}의 Claude 대화를 모두 지울까요? 되돌릴 수 없습니다. 작업 사본과 작업 이력은 그대로 남습니다.`
+              ? `${app.projectName || '이 프로젝트'}의 AI 대화를 모두 지울까요? 되돌릴 수 없습니다. 작업 사본과 작업 이력은 그대로 남습니다.`
               : `「${confirmDel.title}」 대화를 지울까요? 되돌릴 수 없습니다.${confirmDel.running ? ' 응답 중인 대화는 멈춥니다.' : ''} 작업 사본과 작업 이력은 그대로 남습니다.`
           }
           ok="지우기"
@@ -821,7 +930,7 @@ export function ClaudePanel(props: { onClose: () => void }) {
   );
 }
 
-function WorkProgressLine(props: { progress: { done: number; total: number; message?: string } | null; starting: boolean }) {
+function WorkProgressLine(props: { progress: { done: number; total: number; message?: string } | null; starting: boolean; ai: string }) {
   const p = props.progress;
   const pct = p && p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
   return (
@@ -836,34 +945,43 @@ function WorkProgressLine(props: { progress: { done: number; total: number; mess
           <i style={{ width: `${pct}%` }} />
         </div>
       )}
-      {!p && props.starting && <span class="cp-muted" style={{ fontSize: '12px' }}>원본 폴더를 복사한 작업 사본에서 Claude가 읽고 고칩니다. 원본은 [적용]하기 전까지 그대로입니다.</span>}
+      {!p && props.starting && <span class="cp-muted" style={{ fontSize: '12px' }}>원본 폴더를 복사한 작업 사본에서 {props.ai}가 읽고 고칩니다. 원본은 [적용]하기 전까지 그대로입니다.</span>}
     </div>
   );
 }
 
-/** Claude 연결이 '사용 가능'이 아닐 때 패널 맨 위 배너 */
-function StatusBanner(props: { app: DeskApp }) {
-  const { app } = props;
-  const s = app.claude;
-  if (!s || s.state === 'on') return null;
-  const billing = s.code === 'billing' || /결제|billing|credit|payment/i.test(s.message ?? '');
-  if (s.code === 'limit')
+/** 이 대화의 AI 연결이 '사용 가능'이 아닐 때 패널 맨 위 배너 (꺼져 있으면 켠 다른 AI로 새 대화도 고를 수 있게) */
+function StatusBanner(props: { app: DeskApp; provider: AiProvider; other?: AiProvider; onSwitch(p: AiProvider): void }) {
+  const { app, provider: p } = props;
+  const s = providerStatus(app, p);
+  const st = shownState(app, p);
+  if (!st || st === 'on') return null;
+  const ai = AI_LABEL[p];
+  const other = props.other;
+  const switchAct = other ? [{ label: `${AI_LABEL[other]}로 새 대화`, run: () => props.onSwitch(other) }] : [];
+  if (s?.code === 'limit' && st !== 'off')
     return (
       <div class="cp-top-banner">
-        <ErrorBox text={msg('MSG-23')} detail={s.message} indent={false} actions={claudeErrActions(app, 'limit', s.message ?? '')} />
+        <ErrorBox text={providerMsg('MSG-23', p)} detail={s.message} indent={false} actions={[...aiErrActions(app, p, 'limit', s.message ?? ''), ...switchAct]} />
       </div>
     );
-  if (s.state === 'off')
+  if (st === 'off')
     return (
       <div class="cp-top-banner">
-        <ErrorBox tone="info" indent={false} text="Claude 연동이 꺼져 있습니다. Claude 연결에서 켠 뒤 대화할 수 있습니다." actions={[{ label: 'Claude 연결', primary: true, run: () => app.openModal('claude') }]} />
+        <ErrorBox
+          tone="info"
+          indent={false}
+          text={`${ai} 연동이 꺼져 있습니다. 설정에서 켜거나 입력란 아래에서 다른 AI를 고르면 새 대화로 이어 갈 수 있습니다.`}
+          actions={[{ label: `${ai} 연결`, primary: true, run: () => app.openModal(p) }, ...switchAct]}
+        />
       </div>
     );
-  const code = s.state === 'login' ? (billing ? 'billing' : 'auth') : s.state === 'offline' ? 'offline' : 'missing';
+  const billing = s?.code === 'billing' || /결제|billing|credit|payment/i.test(s?.message ?? '');
+  const code = st === 'login' ? (billing ? 'billing' : 'auth') : st === 'offline' ? 'offline' : 'missing';
   const id = code === 'auth' ? 'MSG-21' : code === 'billing' ? 'MSG-30' : code === 'offline' ? 'MSG-22' : 'MSG-20';
   return (
     <div class="cp-top-banner">
-      <ErrorBox tone={code === 'offline' ? 'info' : 'err'} indent={false} text={msg(id)} detail={s.message} actions={claudeErrActions(app, code, s.message ?? '')} />
+      <ErrorBox tone={code === 'offline' ? 'info' : 'err'} indent={false} text={providerMsg(id, p)} detail={s?.message} actions={[...aiErrActions(app, p, code, s?.message ?? ''), ...(code === 'missing' ? switchAct : [])]} />
     </div>
   );
 }
@@ -923,7 +1041,10 @@ function HistoryPop(props: {
           <div key={c.id} class={`cp-pop-row${c.id === props.currentId ? ' cur' : ''}`}>
             <button type="button" class="cp-pop-item" onClick={() => props.onPick(c.id)}>
               <span class="t">
-                <span title={c.title}>{c.title || '제목 없는 대화'}</span>
+                <AiBadge provider={c.provider ?? 'claude'} size={18} title={AI_LABEL[c.provider ?? 'claude']} />
+                <span class="ttl" title={c.title}>
+                  {c.title || '제목 없는 대화'}
+                </span>
                 {c.kind === 'new' && <span class="tag acc">새 프로젝트</span>}
                 {c.mode === 'edit' && <span class="tag neutral">수정 허용</span>}
               </span>

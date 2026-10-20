@@ -2,7 +2,8 @@
 // 종류·기간으로 거르고, 오른쪽 상세에서 [변경 보기]·진행 기록·[되돌리기](MSG-27, 불가 MSG-40)·[다시 시도](MSG-25)·[되돌리는 SQL 실행].
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { ENV_LABEL, type FileChange, type HistoryEntry, type QueryCard, type VcsInfo, type WorkCopy } from '../../../shared/desktop-api';
+import { AI_LABEL, ENV_LABEL, type FileChange, type HistoryEntry, type QueryCard, type VcsInfo, type WorkCopy } from '../../../shared/desktop-api';
+import { providerMsg } from '../ai/providers';
 import { Icon, Spinner } from '../../icons';
 import { errText, useDeskEvent } from '../bridge';
 import { useDesk } from '../ctx';
@@ -248,7 +249,7 @@ export function HistoryView(props: { entryId?: string }) {
         <div class="wv-empty">
           <span class="big"><Icon name="clock" size={22} /></span>
           <b>아직 기록이 없습니다</b>
-          <span>Claude가 고친 코드를 적용하거나, 쿼리를 실행하거나, 운영 DB를 조회하면 여기에 남습니다.</span>
+          <span>AI가 고친 코드를 적용하거나, 쿼리를 실행하거나, 운영 DB를 조회하면 여기에 남습니다.</span>
         </div>
       ) : (
         <div class="wv-hsplit">
@@ -454,7 +455,9 @@ function Detail(props: {
     }
   };
 
-  const convLine = e.conversationId ? ` · Claude 대화${props.convTitle ? ` '${props.convTitle}'` : ''}에서 만든 ${what}` : '';
+  // 변경을 만든 AI (적용 기록에 남김. 예전 기록은 Claude, 쿼리 기록은 모름 → AI)
+  const aiName = e.ai ? AI_LABEL[e.ai] : e.kind === 'apply' || e.kind === 'revert' || e.kind === 'commit' ? 'Claude' : 'AI';
+  const convLine = e.conversationId ? ` · ${aiName} 대화${props.convTitle ? ` '${props.convTitle}'` : ''}에서 만든 ${what}` : '';
   const committed = !!e.commit;
   const vcsKind = e.vcs ?? props.vcs?.kind;
 
@@ -645,11 +648,11 @@ function Detail(props: {
           actions={
             <>
               <button type="button" class="btn" onClick={showDrift}>차이 보기</button>
-              <button type="button" class="btn primary" onClick={askClaude}>Claude에게 요청</button>
+              <button type="button" class="btn primary" onClick={askClaude}>{aiName}에게 요청</button>
             </>
           }
         >
-          {msg('MSG-40')}
+          {providerMsg('MSG-40', e.ai ?? 'claude')}
           <span class="mono" style={{ display: 'block', fontSize: '12px', marginTop: '2px' }}>{blocked.map((f) => baseName(f)).join(', ')}</span>
         </Banner>
       )}
@@ -684,7 +687,7 @@ function Detail(props: {
         <div class="wv-dbar">
           <span class="txt">
             <span class="ic"><Icon name="info" size={14} color="var(--acc-d)" /></span>
-            <span>Claude가 만든 되돌리는 SQL로 새 쿼리 카드를 만듭니다. 실행은 같은 확인 절차(MSG-32)를 거칩니다.</span>
+            <span>AI가 만든 되돌리는 SQL로 새 쿼리 카드를 만듭니다. 실행은 같은 확인 절차(MSG-32)를 거칩니다.</span>
           </span>
           {busy && <span class="row muted" style={{ fontSize: '12.5px' }}><Spinner size={13} /> {busy}</span>}
           <button type="button" class="btn" disabled={!!busy} onClick={revertSqlCard}>

@@ -1,4 +1,4 @@
-import type { ComponentChildren } from 'preact';
+import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { DEFAULT_EXCLUDE_DIRS } from '../../engine/files';
 import { Icon, Spinner } from '../icons';
@@ -42,7 +42,7 @@ export function Modal(props: { title: ComponentChildren; icon?: string; onClose:
   );
 }
 
-export type SettingsPageId = 'analysis' | 'claude';
+export type SettingsPageId = 'analysis' | 'ai' | 'claude' | 'gemini' | 'openai';
 
 /** 설정 창의 [저장]이 페이지마다 부르는 것 */
 export interface SettingsPageHandle {
@@ -52,21 +52,26 @@ export interface SettingsPageHandle {
   save(): Promise<boolean>;
 }
 
-/** 설정 창 왼쪽 칸에 더하는 페이지 (데스크톱: Claude 연결) */
+/** 설정 창 왼쪽 칸에 더하는 페이지 (데스크톱: AI 공통 · Claude · Gemini · ChatGPT) */
 export interface SettingsPage {
   id: SettingsPageId;
   label: string;
   icon: ComponentChildren;
   /** 이름 아래 작은 글 (예: 켜짐 · 사용 가능) */
   hint?: ComponentChildren;
-  /** handle: [저장]할 때 부를 것을 넣음 · done: 페이지가 스스로 저장을 마침(연동 켜기 등) → 나머지도 저장하고 창을 닫음 */
-  render(api: { handle: { current: SettingsPageHandle | null }; done(toast: string): void }): ComponentChildren;
+  /** 왼쪽 칸에서 묶어 보일 이름 (예: AI 연결). 같은 묶음은 이어서 둔다 */
+  group?: string;
+  /**
+   * handle: [저장]할 때 부를 것을 넣음 · done: 페이지가 스스로 저장을 마침(연동 켜기 등) → 나머지도 저장하고 창을 닫음 ·
+   * go: 다른 페이지로 옮김 (예: AI 공통의 [Gemini 켜기 →])
+   */
+  render(api: { handle: { current: SettingsPageHandle | null }; done(toast: string): void; go(id: SettingsPageId): void }): ComponentChildren;
 }
 
 const ANALYSIS_PAGE = { id: 'analysis' as const, label: '분석', hint: '제외 폴더 · 파일 크기' };
 
 /**
- * 설정: 분석 범위(제외 규칙·파일 크기). 데스크톱은 왼쪽 칸에서 Claude 연결 같은 페이지를 고른다.
+ * 설정: 분석 범위(제외 규칙·파일 크기). 데스크톱은 왼쪽 칸에서 AI 연결(AI 공통·Claude·Gemini·ChatGPT) 페이지를 고른다.
  * 한 번 연 페이지는 다른 칸으로 옮겨도 고치던 값이 남고, [저장]은 바뀐 페이지를 모두 저장한다.
  */
 export function SettingsModal(props: { value: Settings; onSave: (s: Settings, toast?: string) => void; onClose: () => void; hasResult: boolean; page?: SettingsPageId; pages?: SettingsPage[] }) {
@@ -155,7 +160,7 @@ export function SettingsModal(props: { value: Settings; onSave: (s: Settings, to
       </Modal>
     );
 
-  const all: { id: SettingsPageId; label: string; icon: ComponentChildren; hint?: ComponentChildren }[] = [{ ...ANALYSIS_PAGE, icon: <Icon name="sliders" size={17} color="var(--ink2)" /> }, ...extra];
+  const all: { id: SettingsPageId; label: string; icon: ComponentChildren; hint?: ComponentChildren; group?: string }[] = [{ ...ANALYSIS_PAGE, icon: <Icon name="sliders" size={17} color="var(--ink2)" /> }, ...extra];
   const onNavKey = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
     e.preventDefault();
@@ -177,24 +182,31 @@ export function SettingsModal(props: { value: Settings; onSave: (s: Settings, to
         </div>
         <div class="set-body">
           <div class="set-nav" role="tablist" aria-orientation="vertical" aria-label="설정 항목" onKeyDown={onNavKey}>
-            {all.map((p) => (
-              <button
-                type="button"
-                key={p.id}
-                id={`set-tab-${p.id}`}
-                role="tab"
-                aria-selected={page === p.id}
-                aria-controls={`set-page-${p.id}`}
-                tabIndex={page === p.id ? 0 : -1}
-                class={`set-tab${page === p.id ? ' on' : ''}`}
-                onClick={() => pick(p.id)}
-              >
-                <span class="ic">{p.icon}</span>
-                <span class="tx">
-                  <span class="l">{p.label}</span>
-                  {p.hint && <span class="h">{p.hint}</span>}
-                </span>
-              </button>
+            {all.map((p, i) => (
+              <Fragment key={p.id}>
+                {/* 묶음 이름은 보이기만 한다 (탭 이름은 각 탭의 글) */}
+                {p.group && p.group !== all[i - 1]?.group && (
+                  <div class="set-group" aria-hidden="true">
+                    {p.group}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  id={`set-tab-${p.id}`}
+                  role="tab"
+                  aria-selected={page === p.id}
+                  aria-controls={`set-page-${p.id}`}
+                  tabIndex={page === p.id ? 0 : -1}
+                  class={`set-tab${page === p.id ? ' on' : ''}`}
+                  onClick={() => pick(p.id)}
+                >
+                  <span class="ic">{p.icon}</span>
+                  <span class="tx">
+                    <span class="l">{p.label}</span>
+                    {p.hint && <span class="h">{p.hint}</span>}
+                  </span>
+                </button>
+              </Fragment>
             ))}
           </div>
           <div class="set-main">
@@ -210,7 +222,7 @@ export function SettingsModal(props: { value: Settings; onSave: (s: Settings, to
               const handle = (handles.current[p.id] ??= { current: null });
               return (
                 <section key={p.id} class="set-page" id={`set-page-${p.id}`} role="tabpanel" aria-labelledby={`set-tab-${p.id}`} aria-label={p.label} hidden={page !== p.id}>
-                  {p.render({ handle, done: (toast) => void saveAll(toast, p.id) })}
+                  {p.render({ handle, done: (toast) => void saveAll(toast, p.id), go: pick })}
                 </section>
               );
             })}

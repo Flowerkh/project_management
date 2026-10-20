@@ -2,7 +2,7 @@
 // <프로젝트 데이터>/history.jsonl 에 추가만 한다. 갱신(진행 기록·커밋 결과·되돌림 표시)도 줄을 덧붙이고 읽을 때 합친다.
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { ENV_LABEL, type FileChange, type HistoryEntry, type HistoryKind, type RevertResult } from '../shared/desktop-api';
+import { AI_LABEL, ENV_LABEL, type FileChange, type HistoryEntry, type HistoryKind, type RevertResult } from '../shared/desktop-api';
 import { resolveInside } from './fsutil';
 import { host } from './host';
 import { DesktopError, emit, handle } from './ipc';
@@ -235,6 +235,8 @@ async function revert(root: string, id: string, opts: { commit: boolean }): Prom
     await historyService.add(root, {
       id: revId,
       kind: 'revert',
+      // 되돌린 변경을 만든 AI (기록 화면의 'Gemini 대화…'와 다시 시도한 커밋 기록에 씀)
+      ...(e.ai ? { ai: e.ai } : {}),
       title: e.title,
       status: '되돌림',
       files: items.map((it) => ({ path: it.path, status: it.status, plus: it.plus, minus: it.minus })),
@@ -285,7 +287,7 @@ async function retry(root: string, id: string): Promise<HistoryEntry | null> {
   const pushOnly = !!e.commit;
   // 이미 커밋했고 푸시는 원하지 않았거나 이미 푸시함 → 다시 할 것이 없음
   if (pushOnly && (!want.push || e.pushed)) return e;
-  const subject = e.kind === 'revert' ? `되돌림: ${e.title}` : commitMessage(e.title).subject;
+  const subject = e.kind === 'revert' ? `되돌림: ${e.title}` : commitMessage(e.title, undefined, AI_LABEL[e.ai ?? 'claude']).subject;
   const out = await commitAndPush(root, id, files, { commit: !pushOnly, push: want.push }, { subject, full: `${subject}\n` }, { pushOnly, retry: true });
   const after = out.entry ?? (await historyService.get(root, id));
   if (e.kind === 'revert' && after?.status !== '되돌림') await historyService.update(root, id, { status: '되돌림' });
@@ -293,6 +295,7 @@ async function retry(root: string, id: string): Promise<HistoryEntry | null> {
   const ok = (out.commit?.ok ?? true) && (out.push?.ok ?? true);
   await historyService.add(root, {
     kind: 'commit',
+    ...(e.ai ? { ai: e.ai } : {}),
     title: e.title,
     status: ok ? (out.push?.ok ? '푸시됨' : '커밋됨') : '실패',
     files: e.files,

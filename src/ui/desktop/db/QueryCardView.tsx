@@ -102,7 +102,7 @@ function ExecConfirm(props: { card: QueryCard; typeName: boolean; onClose: () =>
       <div class="db-msgtext">{main}</div>
       {prod && !instant && <div class="db-subtext">트랜잭션 안에서 실행해 행 수가 다르면 롤백합니다.</div>}
       {noEstimate && c.estimateNote && !c.irreversible && <div class="db-subtext">예상 행 수를 구하지 못한 이유: {c.estimateNote}</div>}
-      {instant && !c.revertSql && <div class="db-subtext">Claude가 되돌리는 SQL을 주지 않았습니다. 필요하면 실행 전에 Claude에게 요청해 주세요.</div>}
+      {instant && !c.revertSql && <div class="db-subtext">AI가 되돌리는 SQL을 주지 않았습니다. 필요하면 실행 전에 대화에서 요청해 주세요.</div>}
       {props.typeName && (
         <div class="db-typed">
           <label for="db-typed-name">{instant || !prod ? '계속하려면 DB 이름을 입력해 주세요.' : 'DB 이름'}</label>

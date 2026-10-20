@@ -5,6 +5,7 @@
 // 화면에는 비밀 값 대신 hasApiKey·'********'만 보낸다.
 import path from 'node:path';
 import type { AuthMode, ClaudeConfig, ClaudeConfigInput, ClaudeStatus } from '../../shared/desktop-api';
+import { getAiSettings, setAiSettings } from '../ai/settings';
 import { DesktopError } from '../ipc';
 import { dataDir, getSecret, hasSecret, nowIso, readJson, setSecret, shortHash, withLock, writeJson } from '../store';
 
@@ -25,6 +26,7 @@ export interface StoredConfig {
   /** 계정이 있으면 가린 주소 (원래 주소는 비밀 값) */
   proxy?: string;
   proxySecret?: boolean;
+  /** v0.5까지의 셸 허용 목록 (지금은 AI 공통 ai.json — 처음 읽을 때 옮겨 감). 새로 쓰지 않는다 */
   shellAllow: string[];
   aiSummary: boolean;
 }
@@ -83,11 +85,11 @@ export async function getStored(): Promise<StoredConfig> {
 /** 화면에 보내는 설정 (비밀 값 없음) */
 export async function getConfig(): Promise<ClaudeConfig> {
   const s = await getStored();
-  return toPublic(s, await hasSecret(KEY_API));
+  return toPublic(s, await hasSecret(KEY_API), (await getAiSettings()).shellAllow);
 }
 
-function toPublic(s: StoredConfig, hasApiKey: boolean): ClaudeConfig {
-  const out: ClaudeConfig = { enabled: s.enabled, authMode: s.authMode, hasApiKey, shellAllow: [...s.shellAllow], aiSummary: s.aiSummary };
+function toPublic(s: StoredConfig, hasApiKey: boolean, shellAllow: string[]): ClaudeConfig {
+  const out: ClaudeConfig = { enabled: s.enabled, authMode: s.authMode, hasApiKey, shellAllow: [...shellAllow], aiSummary: s.aiSummary };
   if (s.consentAt) out.consentAt = s.consentAt;
   if (s.cloud) {
     const env: Record<string, string> = {};
@@ -124,18 +126,6 @@ export function maskProxy(url: string): string {
   return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/i, '$1****@');
 }
 
-function cleanShellAllow(list: unknown): string[] {
-  if (!Array.isArray(list)) return [];
-  const out: string[] = [];
-  for (const x of list) {
-    const s = String(x ?? '').replace(/\s+/g, ' ').trim();
-    if (!s || s.length > 200 || /[\r\n]/.test(String(x))) continue;
-    if (!out.includes(s)) out.push(s);
-    if (out.length >= 50) break;
-  }
-  return out;
-}
-
 /**
  * 모델 값: 별칭(sonnet)·모델 이름(claude-…)·[1m] 같은 붙임·회사 클라우드 모델 ID(ARN 등)까지.
  * 비우면 undefined (Claude Code 기본값). 쓸 수 없는 글자가 있으면 오류
@@ -165,9 +155,10 @@ export async function setConfig(input: ClaudeConfigInput): Promise<SetResult> {
     ...before,
     enabled: !!input.enabled,
     authMode: input.authMode,
-    shellAllow: cleanShellAllow(input.shellAllow),
     aiSummary: !!input.aiSummary,
   });
+  // 셸 허용 목록은 AI 공통 설정에 (주었을 때만)
+  const ai = Array.isArray(input.shellAllow) ? await setAiSettings({ shellAllow: input.shellAllow }) : await getAiSettings();
   next.model = cleanModel(input.model);
   next.cliPath = typeof input.cliPath === 'string' && input.cliPath.trim() ? path.resolve(input.cliPath.trim()) : undefined;
 
@@ -243,7 +234,7 @@ export async function setConfig(input: ClaudeConfigInput): Promise<SetResult> {
     f.config = next;
   });
   const afterKey = await authKey(next);
-  return { config: toPublic(next, await hasSecret(KEY_API)), enabledNow, disabledNow, authChanged: afterKey !== beforeKey };
+  return { config: toPublic(next, await hasSecret(KEY_API), ai.shellAllow), enabledNow, disabledNow, authChanged: afterKey !== beforeKey };
 }
 
 /** 저장된 설정의 CLI 경로만 바꾼다 ([경로 지정]) */

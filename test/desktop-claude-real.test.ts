@@ -82,7 +82,7 @@ test('실제 CLI: 버전 확인 → 인증 시험 요청이 "인증 필요"로 �
   const st = await call('claude.status', true);
   assert.ok(Date.now() - t0 < 60000);
   assert.match(st.version ?? '', /^\d+\.\d+\.\d+$/);
-  assert.equal(st.checks?.cli.ok, true);
+  assert.equal(st.checks?.cli?.ok, true);
   assert.equal(st.state, 'login', JSON.stringify(st));
   assert.equal(st.code, 'auth');
   assert.match(st.checks?.auth.message ?? '', /Not logged in|login/i);

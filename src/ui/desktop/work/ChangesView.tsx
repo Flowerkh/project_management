@@ -2,11 +2,12 @@
 // [적용] → 확인(MSG-08: 적용 후 커밋·커밋 후 푸시) → 적용 → 다시 분석 → 작업 이력(SCR-12). 그사이 원본이 바뀌었으면 멈춤(MSG-31)
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import type { Conversation, FileChange, ProjectSettings, VcsInfo, WorkCopy } from '../../../shared/desktop-api';
+import { AI_LABEL, type Conversation, type FileChange, type ProjectSettings, type VcsInfo, type WorkCopy } from '../../../shared/desktop-api';
 import { ConfirmDialog } from '../../components/Dialogs';
 import { Icon, Spinner } from '../../icons';
 import { errText, useDeskEvent } from '../bridge';
 import { useDesk } from '../ctx';
+import { providerMsg } from '../ai/providers';
 import { msg } from '../messages';
 import { baseName, Delta, DiffFile, dirShort } from './DiffView';
 import { computeImpact, type Impact, sameRoot } from './impact';
@@ -79,6 +80,8 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
   });
 
   const convId = props.conversationId ?? data?.work.conversationId;
+  /** 변경을 만든 대화의 AI 이름 (대화를 못 찾으면 AI) */
+  const ai = data?.conv ? AI_LABEL[data.conv.provider ?? 'claude'] : 'AI';
   const changes = data?.changes ?? [];
   const usable = changes.filter((c) => !c.blocked);
   const included = usable.filter((c) => !excluded.has(c.path));
@@ -177,7 +180,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
     }
   };
 
-  /** MSG-31 [다시 맞추기]: 사본을 새 원본으로 맞추고 Claude에게 다시 고쳐 달라고 요청 */
+  /** MSG-31 [다시 맞추기]: 사본을 새 원본으로 맞추고 그 대화의 AI에게 다시 고쳐 달라고 요청 */
   const realign = async (files: string[]) => {
     setBusy('작업 사본을 맞추는 중');
     try {
@@ -187,7 +190,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
       const list = files.map((f) => baseName(f)).join(', ');
       const text = `작업 사본을 만든 뒤 원본 파일이 바뀌어 다음 파일을 새 원본으로 다시 맞췄습니다: ${list}. 아까 고친 내용을 새 원본 기준으로 이 파일들에 다시 적용해 주세요.`;
       app.openChat(convId ? { conversationId: convId, text, send: true } : { text });
-      app.toast('작업 사본을 새 원본으로 맞췄습니다. Claude에게 다시 맞춰 달라고 요청했습니다.');
+      app.toast(`작업 사본을 새 원본으로 맞췄습니다. ${ai}에게 다시 맞춰 달라고 요청했습니다.`);
       await load();
     } catch (e) {
       setBanner({ kind: 'err', text: errText(e) });
@@ -260,7 +263,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
   const w = data.work;
   const sub = (
     <>
-      {data.conv ? <span>Claude 대화 '{data.conv.title}'에서 만든 변경</span> : <span>Claude가 만든 변경</span>}
+      {data.conv ? <span>{ai} 대화 '{data.conv.title}'에서 만든 변경</span> : <span>AI가 만든 변경</span>}
       <span class="dot">·</span>
       <span>작업 사본 <span class="mono">{baseName(w.path.replace(/\\/g, '/'))}</span></span>
       <span class="dot">·</span>
@@ -287,7 +290,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
             </>
           }
         >
-          {msg('MSG-31', { n: conflictFiles.length })}
+          {providerMsg('MSG-31', data.conv?.provider ?? 'claude', { n: conflictFiles.length })}
           <span class="mono" style={{ display: 'block', fontSize: '12px', marginTop: '2px' }}>{conflictFiles.map((f) => baseName(f)).join(', ')}</span>
         </Banner>
       )}
@@ -325,7 +328,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
           ) : (
             <>
               <b>작업 사본에 바뀐 파일이 없습니다</b>
-              <span>Claude가 대화에서 [수정 진행]으로 고치면 여기에서 바뀐 줄을 보고 적용합니다. 원본 폴더는 적용하기 전까지 그대로입니다.</span>
+              <span>AI가 대화에서 [수정 진행]으로 고치면 여기에서 바뀐 줄을 보고 적용합니다. 원본 폴더는 적용하기 전까지 그대로입니다.</span>
               <button type="button" class="btn" onClick={backToChat}><Icon name="chat" size={15} />대화로 돌아가기</button>
             </>
           )}
@@ -335,7 +338,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
           <section class="card wv-sum" aria-label="변경 요약">
             <div class="it" style={{ flexGrow: 1 }}>
               <span class="lbl"><Icon name="sparkle" size={12} color="var(--muted)" />변경 이유</span>
-              <span class="why" title={reason ?? undefined}>{reason ?? 'Claude 대화의 수정'}</span>
+              <span class="why" title={reason ?? undefined}>{reason ?? `${ai} 대화의 수정`}</span>
             </div>
             <div class="it" style={{ flexGrow: 1.3 }}>
               <span class="lbl">영향 범위</span>
@@ -377,7 +380,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
               ) : (
                 <>
                   <span style={{ fontSize: '13px', color: 'var(--ink2)' }}>실행한 명령 없음</span>
-                  <span class="note">빌드·테스트는 Claude에게 요청해 작업 사본에서 실행할 수 있습니다</span>
+                  <span class="note">빌드·테스트는 {ai}에게 요청해 작업 사본에서 실행할 수 있습니다</span>
                 </>
               )}
             </div>
@@ -512,7 +515,7 @@ export function ChangesView(props: { workId: string; conversationId?: string }) 
           vcs={vcs}
           defaults={data.settings?.applyDefaults ?? { commit: false, push: false }}
           dirtyFiles={dirtyIncluded}
-          title={data.conv?.title ?? reason ?? 'Claude가 고친 코드'}
+          title={data.conv?.title ?? reason ?? `${ai}가 고친 코드`}
           busy={busy === '적용하는 중'}
           onApply={doApply}
           onClose={() => !busy && setDialog(null)}

@@ -1,13 +1,15 @@
-// 대화 항목 그리기 (SCR-09·SCR-11 공통): 사용자 말풍선, Claude 답변, 작업 내역 묶음, 변경 카드, 쿼리 카드, 모드 전환, 알림·오류, 확인 요청.
+// 대화 항목 그리기 (SCR-09·SCR-11 공통): 사용자 말풍선, AI 답변, 작업 내역 묶음, 변경 카드, 쿼리 카드, 모드 전환, 알림·오류, 확인 요청.
+// 문구·버튼은 그 대화의 AI(Claude·Gemini·ChatGPT)에 맞춘다.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { type ChatItem, type ClaudeErrorCode, type Conversation, DEFAULT_RULES, ENV_LABEL, type FileChange, type PendingRequest } from '../../../shared/desktop-api';
+import { AI_LABEL, type AiProvider, type ChatItem, type ClaudeErrorCode, type Conversation, DEFAULT_RULES, ENV_LABEL, type FileChange, type PendingRequest } from '../../../shared/desktop-api';
 import { copyText, fmtNum } from '../../format';
 import { Icon, Spinner } from '../../icons';
+import { AiBadge, providerMsg } from '../ai/providers';
 import { errText } from '../bridge';
 import type { DeskApp } from '../ctx';
 import { QueryCardView } from '../db/QueryCardView';
-import { MSG, msg } from '../messages';
+import { MSG } from '../messages';
 import { type LinkEnv, Markdown } from './markdown';
 import { ERR_MSG, firstTable, hm, maxRowsOf, splitContextBlock } from './util';
 
@@ -15,18 +17,14 @@ type Item<T extends ChatItem['type']> = Extract<ChatItem, { type: T }>;
 type Activity = Item<'activity'>;
 type Select = Item<'select'>;
 
-export function Avatar(props: { size?: number }) {
-  const s = props.size ?? 24;
-  return (
-    <span class="cp-avatar" style={{ width: `${s}px`, height: `${s}px` }} aria-hidden="true">
-      <Icon name="sparkle" size={Math.round(s * 0.58)} color="#FFFFFF" sw={1.8} />
-    </span>
-  );
+/** AI 얼굴: 그 AI의 글자 배지 (C · G · O) */
+export function Avatar(props: { size?: number; provider?: AiProvider }) {
+  return <AiBadge provider={props.provider ?? 'claude'} size={props.size ?? 24} />;
 }
 
 // ------------------------------------------------------------------ 말풍선·답변
 
-const KIND_LABEL: Record<string, string> = { screen: '화면', table: '테이블', menu: '메뉴', batch: '배치', file: '파일', flow: '흐름', summary: '요약' };
+const KIND_LABEL: Record<string, string> = { screen: '화면', table: '테이블', menu: '메뉴', batch: '배치', file: '파일', flow: '흐름', summary: '요약', conversation: '이전 대화' };
 
 export function UserBubble(props: { item: Item<'user'> }) {
   const b = splitContextBlock(props.item.text);
@@ -54,11 +52,11 @@ export function UserBubble(props: { item: Item<'user'> }) {
   );
 }
 
-export function AssistantMsg(props: { item: Item<'assistant'>; env: LinkEnv; text?: string; children?: ComponentChildren }) {
+export function AssistantMsg(props: { item: Item<'assistant'>; env: LinkEnv; text?: string; children?: ComponentChildren; provider?: AiProvider }) {
   const text = props.text ?? props.item.text;
   return (
     <div class="cp-msg">
-      <Avatar size={24} />
+      <Avatar size={24} provider={props.provider} />
       <div class="cp-msg-body">
         <Markdown text={text} env={props.env} caret={!!props.item.streaming} />
         {props.children}
@@ -123,7 +121,7 @@ function ActivityLine(props: { item: Activity; open: boolean; toggle: () => void
   );
 }
 
-function SelectLine(props: { item: Select; open: boolean; toggle: () => void }) {
+function SelectLine(props: { item: Select; open: boolean; toggle: () => void; provider: AiProvider }) {
   const it = props.item;
   const table = firstTable(it.sql);
   return (
@@ -140,7 +138,7 @@ function SelectLine(props: { item: Select; open: boolean; toggle: () => void }) 
       {it.maskedColumns.length > 0 && (
         <div class="cp-tl-note" title={it.maskedColumns.join(', ')}>
           <Icon name="lock" size={12} color="var(--muted)" sw={1.9} />
-          {msg('MSG-37', { n: it.maskedColumns.length })}
+          {providerMsg('MSG-37', props.provider, { n: it.maskedColumns.length })}
         </div>
       )}
       {props.open && <pre class="cp-tl-sql">{it.sql}</pre>}
@@ -148,7 +146,7 @@ function SelectLine(props: { item: Select; open: boolean; toggle: () => void }) 
   );
 }
 
-export function ToolGroup(props: { items: (Activity | Select)[]; runningId: string | null; isNew: boolean; env: LinkEnv; filesClickable: boolean; defaultOpen?: boolean }) {
+export function ToolGroup(props: { items: (Activity | Select)[]; runningId: string | null; isNew: boolean; env: LinkEnv; filesClickable: boolean; defaultOpen?: boolean; provider?: AiProvider }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set(props.defaultOpen ? props.items.map((i) => i.id) : []));
   const toggle = (id: string) =>
     setOpen((p) => {
@@ -172,7 +170,7 @@ export function ToolGroup(props: { items: (Activity | Select)[]; runningId: stri
             filesClickable={props.filesClickable}
           />
         ) : (
-          <SelectLine key={it.id} item={it} open={open.has(it.id)} toggle={() => toggle(it.id)} />
+          <SelectLine key={it.id} item={it} open={open.has(it.id)} toggle={() => toggle(it.id)} provider={props.provider ?? 'claude'} />
         ),
       )}
     </div>
@@ -254,44 +252,35 @@ export interface ErrAction {
   run: () => void;
 }
 
-export function claudeErrActions(app: DeskApp, code: ClaudeErrorCode, message: string): ErrAction[] {
+/** 오류 아래 버튼 (그 AI에 맞게: 로그인은 Claude·ChatGPT 계정 로그인만 터미널에서, 경로 지정은 CLI가 있는 Claude·ChatGPT만) */
+export function aiErrActions(app: DeskApp, p: AiProvider, code: ClaudeErrorCode, message: string): ErrAction[] {
+  const label = AI_LABEL[p];
   const recheck: ErrAction = {
     label: '다시 확인',
     primary: code === 'auth' || code === 'missing',
     run: () => {
-      app.refreshClaude(true).then(() => app.toast('Claude 연결 상태를 다시 확인했습니다.'));
+      app.refreshAi(p, true).then(() => app.toast(`${label} 연결 상태를 다시 확인했습니다.`));
     },
   };
-  if (code === 'auth')
-    return [
-      {
-        label: '터미널에서 로그인',
-        run: () => {
-          app.desk.invoke('claude.openLogin').then(
-            (ok) => app.toast(ok ? '터미널에서 Claude Code 로그인을 마친 뒤 [다시 확인]을 눌러 주세요.' : '터미널을 열지 못했습니다.'),
-            (e) => app.toast(errText(e)),
-          );
-        },
-      },
-      recheck,
-    ];
+  const settings: ErrAction = { label: '설정 열기', run: () => app.openModal(p) };
+  const opened = (ok: boolean) =>
+    app.toast(ok ? `터미널에서 ${p === 'claude' ? 'Claude Code' : 'Codex'} 로그인을 마친 뒤 [다시 확인]을 눌러 주세요.` : '터미널을 열지 못했습니다.');
+  if (code === 'auth') {
+    if (p === 'claude') return [{ label: '터미널에서 로그인', run: () => void app.desk.invoke('claude.openLogin').then(opened, (e) => app.toast(errText(e))) }, recheck];
+    if (p === 'openai' && (app.ai.openai?.authMode ?? 'chatgpt') === 'chatgpt')
+      return [{ label: '터미널에서 로그인', run: () => void app.desk.invoke('openai.openLogin').then(opened, (e) => app.toast(errText(e))) }, recheck];
+    return [settings, recheck];
+  }
   if (code === 'offline' || code === 'billing') return [recheck];
-  if (code === 'limit') return [{ label: '인증 방식 변경', run: () => app.openModal('claude') }];
-  if (code === 'missing')
-    return [
-      {
-        label: '경로 지정',
-        run: () => {
-          app.desk.invoke('claude.pickCli').then(
-            (p) => {
-              if (p) app.refreshClaude(true);
-            },
-            (e) => app.toast(errText(e)),
-          );
-        },
-      },
-      recheck,
-    ];
+  if (code === 'limit') return [{ label: '인증 방식 변경', run: () => app.openModal(p) }];
+  if (code === 'missing') {
+    if (p === 'gemini') return [settings, recheck];
+    const picked = (x: string | null) => {
+      if (x) void app.refreshAi(p, true);
+    };
+    const pick = () => (p === 'claude' ? app.desk.invoke('claude.pickCli') : app.desk.invoke('openai.pickCli')).then(picked, (e) => app.toast(errText(e)));
+    return [{ label: '경로 지정', run: () => void pick() }, recheck];
+  }
   return [{ label: '오류 내용 복사', run: () => copyText(message).then((ok) => app.toast(ok ? '오류 내용을 복사했습니다.' : '복사하지 못했습니다.')) }];
 }
 
@@ -324,29 +313,29 @@ export function ErrorBox(props: { tone?: 'err' | 'warn' | 'info'; text: string; 
   );
 }
 
-function ErrorItem(props: { item: Item<'error'>; app: DeskApp; extra?: ErrAction[] }) {
+function ErrorItem(props: { item: Item<'error'>; app: DeskApp; provider: AiProvider; extra?: ErrAction[] }) {
   const { item } = props;
   const id = ERR_MSG[item.code];
-  const text = id ? msg(id) : item.message || 'Claude 요청이 실패했습니다.';
+  const text = id ? providerMsg(id, props.provider) : item.message || `${AI_LABEL[props.provider]} 요청이 실패했습니다.`;
   const tone = MSG[id ?? '']?.kind === 'info' ? 'info' : 'err';
-  return <ErrorBox tone={tone} text={text} detail={id ? item.message : undefined} actions={[...(props.extra ?? []), ...claudeErrActions(props.app, item.code, item.message)]} />;
+  return <ErrorBox tone={tone} text={text} detail={id ? item.message : undefined} actions={[...(props.extra ?? []), ...aiErrActions(props.app, props.provider, item.code, item.message)]} />;
 }
 
 const DB_FAIL = /DB\s*(\S+?)에 연결하지 못했습니다/;
 
-function NoticeItem(props: { item: Item<'notice'>; app: DeskApp }) {
-  const { item, app } = props;
+function NoticeItem(props: { item: Item<'notice'>; app: DeskApp; provider: AiProvider }) {
+  const { item, app, provider } = props;
   const msgId = item.msg ?? (DB_FAIL.test(item.text) ? 'MSG-36' : undefined);
   if (msgId && MSG[msgId]) {
     const def = MSG[msgId];
     const vars = item.vars ?? (msgId === 'MSG-36' ? { DB: item.text.match(DB_FAIL)?.[1] ?? '' } : {});
-    const text = msg(msgId, vars);
+    const text = providerMsg(msgId, provider, vars);
     const actions: ErrAction[] = [];
     for (const b of def.buttons) {
       const label = b.replace(/^[*!]/, '');
       if (label === '연결 확인' || label === '프로젝트 연결 열기') actions.push({ label, primary: b.startsWith('*'), run: () => app.openModal('project') });
-      else if (label === '인증 방식 변경') actions.push({ label, run: () => app.openModal('claude') });
-      else if (label === '다시 확인') actions.push({ label, run: () => app.refreshClaude(true) });
+      else if (label === '인증 방식 변경') actions.push({ label, run: () => app.openModal(provider) });
+      else if (label === '다시 확인') actions.push({ label, run: () => void app.refreshAi(provider, true) });
     }
     return <ErrorBox tone={def.kind === 'err' ? 'err' : def.kind === 'warn' ? 'warn' : 'info'} text={text} detail={item.text !== text ? item.text : undefined} actions={actions} />;
   }
@@ -405,6 +394,7 @@ function ModeLine(props: { item: Item<'mode'>; approved: boolean; isNew: boolean
 
 function PendingView(props: { pending: PendingRequest; conv: Conversation; canEdit: boolean; actions: LogActions; folderName?: string; env: LinkEnv; showPlan: boolean }) {
   const { pending: p, actions } = props;
+  const provider = props.conv.provider ?? 'claude';
   const [sql, setSql] = useState(false);
   const [busy, setBusy] = useState(false);
   const answer = (allow: boolean) => {
@@ -412,7 +402,7 @@ function PendingView(props: { pending: PendingRequest; conv: Conversation; canEd
     setBusy(true);
     Promise.resolve(actions.respond(p.requestId, allow)).finally(() => setBusy(false));
   };
-  // Claude가 ExitPlanMode로 낸 계획 (답변 글에 없을 수 있어 확인 전에 보여 준다)
+  // AI가 낸 계획(ExitPlanMode) (답변 글에 없을 수 있어 확인 전에 보여 준다)
   const planBox =
     p.kind === 'plan' && props.showPlan && p.detail?.trim() ? (
       <div class="cp-plan-box">
@@ -467,7 +457,7 @@ function PendingView(props: { pending: PendingRequest; conv: Conversation; canEd
           <span class="ic">
             <Icon name="terminal" size={15} color="var(--acc-d)" />
           </span>
-          <span>{msg('MSG-24', { 명령: cmd })}</span>
+          <span>{providerMsg('MSG-24', provider, { 명령: cmd })}</span>
         </div>
         <div class="cp-ask-cmd">{cmd}</div>
         <div class="cp-ask-btns">
@@ -485,7 +475,7 @@ function PendingView(props: { pending: PendingRequest; conv: Conversation; canEd
   // DB 조회 확인: 운영은 항상(MSG-42, 끌 수 없음), 개발·QA는 '매번 확인'으로 설정했을 때. 메인이 문구를 채워 보내면 그대로
   const prod = !p.env || p.env === 'prod';
   const n = p.maxRows ?? maxRowsOf(p.detail, DEFAULT_RULES.prod.maxRows);
-  const text = p.detail && /조회하려고/.test(p.detail) ? p.detail : msg('MSG-42', { DB: p.db || p.title, n });
+  const text = p.detail && /조회하려고/.test(p.detail) ? p.detail : providerMsg('MSG-42', provider, { DB: p.db || p.title, n });
   return (
     <div class="cp-ask" role="group" aria-label={prod ? '운영 DB 조회 확인' : 'DB 조회 확인'} style={prod ? { borderColor: '#ebcb8b', background: '#fffbf2' } : undefined}>
       <div class="cp-ask-h">
@@ -554,6 +544,7 @@ const STOP_TEXT: Partial<Record<ClaudeErrorCode, string>> = {
 
 export function ChatLog(props: ChatLogProps) {
   const { conv, app, env } = props;
+  const provider = conv.provider ?? 'claude';
   const isNew = conv.kind === 'new';
   const out: ComponentChildren[] = [];
   const items = conv.items;
@@ -563,7 +554,7 @@ export function ChatLog(props: ChatLogProps) {
   let group: (Activity | Select)[] = [];
   const flush = () => {
     if (!group.length) return;
-    out.push(<ToolGroup key={`g-${group[0].id}`} items={group} runningId={runningId} isNew={isNew} env={env} filesClickable={props.filesClickable} />);
+    out.push(<ToolGroup key={`g-${group[0].id}`} items={group} runningId={runningId} isNew={isNew} env={env} filesClickable={props.filesClickable} provider={provider} />);
     group = [];
   };
   for (const it of items) {
@@ -580,7 +571,7 @@ export function ChatLog(props: ChatLogProps) {
         const text = props.textOf ? props.textOf(it) : it.text;
         if (!text.trim() && !it.streaming && !props.afterAssistant) break;
         out.push(
-          <AssistantMsg key={it.id} item={it} env={env} text={text}>
+          <AssistantMsg key={it.id} item={it} env={env} text={text} provider={provider}>
             {props.afterAssistant?.(it)}
           </AssistantMsg>,
         );
@@ -600,7 +591,7 @@ export function ChatLog(props: ChatLogProps) {
         out.push(<ModeLine key={it.id} item={it} approved={it.via === 'plan' || props.approvedModes.has(it.id)} isNew={isNew} folderName={props.folderName} />);
         break;
       case 'notice':
-        out.push(<NoticeItem key={it.id} item={it} app={app} />);
+        out.push(<NoticeItem key={it.id} item={it} app={app} provider={provider} />);
         break;
       case 'error': {
         const lastErr = it.id === last?.id;
@@ -609,14 +600,14 @@ export function ChatLog(props: ChatLogProps) {
             <div key={it.id} class="cp-sys err" title={it.message}>
               <span>
                 <Icon name="warn" size={13} color="var(--err)" sw={1.9} />
-                {hm(it.at)} · {STOP_TEXT[it.code] ?? 'Claude 요청이 실패했습니다'}
+                {hm(it.at)} · {STOP_TEXT[it.code] ?? `${AI_LABEL[provider]} 요청이 실패했습니다`}
               </span>
             </div>,
           );
           break;
         }
         const extra: ErrAction[] = isNew && lastErr && props.actions.continueRun && it.code !== 'missing' ? [{ label: '이어서 진행', primary: true, run: props.actions.continueRun }] : [];
-        out.push(<ErrorItem key={it.id} item={it} app={app} extra={extra} />);
+        out.push(<ErrorItem key={it.id} item={it} app={app} provider={provider} extra={extra} />);
         break;
       }
     }

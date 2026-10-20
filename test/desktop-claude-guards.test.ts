@@ -154,6 +154,23 @@ test('앱 규칙·맥락·제목', () => {
   assert.equal(buildFirstMessage('질문'), '질문');
   assert.equal(buildFirstMessage('질문', { title: '', chips: [{ kind: 'summary', label: 's', text: 'x' }] }), '질문');
   assert.equal(buildFirstMessage('질문', { title: 'T', chips: [{ kind: 'table', label: 'TB_A', text: '컬럼 A' }] }), '[맥락] T\n## 테이블: TB_A\n컬럼 A\n[질문]\n질문');
+  // 이전 대화는 다른 맥락이 많아도 자리를 지키고, 길면 앞부분을 잘라 최근 답을 남긴다
+  const big = (c: string) => c.repeat(8000);
+  const carried = `[사용자] 처음 질문\n\n[Gemini] ${'가'.repeat(29000)}\n\n[사용자] 마지막 질문\n\n[Gemini] 마지막 답`;
+  const msg = buildFirstMessage('이어서', {
+    title: 'T',
+    chips: [
+      { kind: 'screen', label: 'S1', text: big('a') },
+      { kind: 'table', label: 'T1', text: big('b') },
+      { kind: 'menu', label: 'M1', text: big('c') },
+      { kind: 'conversation', label: '이전 대화 (Gemini)', text: carried },
+    ],
+  });
+  assert.ok(msg.length < 45000, `길이 ${msg.length}`);
+  assert.match(msg, /## 이전 대화: 이전 대화 \(Gemini\)\n/);
+  assert.match(msg, /\[Gemini\] 마지막 답\n\[질문\]\n이어서$/, '최근 답이 남음');
+  const long = buildFirstMessage('q', { title: '', chips: [{ kind: 'conversation', label: '이전 대화 (ChatGPT)', text: `${'x'.repeat(40000)}끝` }] });
+  assert.match(long, /…\(앞부분 생략\)\nx+끝\n\[질문\]\nq$/);
   assert.equal(shortTitle('  \n  짧은 질문\n둘째 줄'), '짧은 질문');
   assert.equal(shortTitle(''), '새 대화');
   assert.equal([...shortTitle('가'.repeat(50))].length, 30);

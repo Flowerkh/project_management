@@ -81,7 +81,7 @@ test('연결 확인: 가짜 CLI로 SDK 시험 요청 → on, 인증 실패 → l
   const st = await call('claude.status', true);
   assert.equal(st.state, 'on', JSON.stringify(st));
   assert.equal(st.version, '2.1.302');
-  assert.equal(st.checks?.cli.ok, true);
+  assert.equal(st.checks?.cli?.ok, true);
   assert.equal(st.checks?.auth.ok, true);
   assert.ok(typeof st.authMs === 'number');
   assert.equal(st.authLabel, 'Claude Code 로그인');
